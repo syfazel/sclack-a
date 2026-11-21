@@ -1,0 +1,66 @@
+@import "tailwindcss";
+@plugin "daisyui";
+
+@plugin "daisyui/theme" {
+  name: "sclack";
+  default: true;
+  color-scheme: "light";
+  --color-base-100: #fdf8ef;
+  --color-base-200: #f8eedd;
+  --color-base-300: #f0e2c8;
+  --color-base-content: #3f2e1e;
+  --color-primary: #d97706;
+  --color-primary-content: #fff7ed;
+  --color-secondary: #f97066;
+  --color-secondary-content: #fff5f3;
+  --color-accent: #e07830;
+  --color-accent-content: #fff7ed;
+  --color-neutral: #57534e;
+  --color-neutral-content: #fafaf9;
+  --color-info: #0284c7;
+  --color-success: #15803d;
+  --color-warning: #b45309;
+  --color-error: #b91c1c;
+  --radius-selector: 14px;
+  --radius-field: 14px;
+  --radius-box: 16px;
+}
+
+@theme {
+  --font-sans: "Vazirmatn", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+html,
+body {
+  font-family: var(--font-sans);
+  background: var(--color-base-100);
+  color: var(--color-base-content);
+}
+
+/* دکمه‌های sclack_A: ارتفاع ۴۴px، گردی ۱۴px (تصمیم مرحلهٔ ۶) */
+.btn-sclack {
+  height: 44px;
+  min-height: 44px;
+  border-radius: 14px;
+  font-weight: 500;
+}
+
+.btn-send {
+  height: 44px;
+  min-height: 44px;
+  border-radius: 999px;
+  font-weight: 500;
+}
+
+.input-sclack {
+  height: 44px;
+  border-radius: 14px;
+}
+
+/* پیام خودم: کهربایی روشن؛ پیام دیگران: سفید */
+.msg-mine {
+  background: #fdeecd;
+}
+.msg-other {
+  background: #ffffff;
+}
