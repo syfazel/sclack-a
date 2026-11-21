@@ -1,8 +1,9 @@
 import { sb } from './supabase.js'
 import { auth, ws } from './store.svelte.js'
+import { loadDocs, createAutoDoc } from './docs.js'
 
-// Workspace data: projects, rooms, members. Reads only what RLS allows the
-// signed-in member to see. No test data is ever written here.
+// Workspace data: projects, rooms, members, docs, files. Reads only what
+// RLS allows the signed-in member to see. No test data is ever written here.
 
 export async function loadWorkspace() {
   if (!sb || !auth.member) return
@@ -20,7 +21,10 @@ export async function loadWorkspace() {
     ws.currentProjectId = ws.projects[0].id
   }
   ws.loading = false
-  if (ws.currentProjectId) await loadRooms(ws.currentProjectId)
+  if (ws.currentProjectId) {
+    await loadRooms(ws.currentProjectId)
+    await loadDocs(ws.currentProjectId)
+  }
 }
 
 export async function loadRooms(projectId) {
@@ -37,8 +41,8 @@ export async function loadRooms(projectId) {
   else ws.error = error.message
 }
 
-// Create a project (name + one tap) and its auto room «گفت‌وگو».
-// The auto doc «سند» is NOT created here — docs arrive in D4.
+// Create a project (name + one tap) with its auto room «گفت‌وگو» and its
+// auto doc «سند» (D4).
 export async function createProject(name) {
   const clean = (name || '').trim()
   if (!clean) throw new Error('نام پروژه را بنویسید.')
@@ -61,10 +65,11 @@ export async function createProject(name) {
     .select()
     .single()
   if (rerr) throw rerr
+  const doc = await createAutoDoc(data.id)
   await loadWorkspace()
   ws.currentProjectId = data.id
   ws.currentRoomId = room.id
-  return { project: data, room }
+  return { project: data, room, doc }
 }
 
 export function memberName(memberId) {

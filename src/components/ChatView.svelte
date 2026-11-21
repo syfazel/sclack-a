@@ -2,11 +2,13 @@
   import { auth, ws, chat } from '../lib/store.svelte.js'
   import { memberName } from '../lib/data.js'
   import { loadMessages, subscribeRoom, unsubscribeRoom, sendTyping, sendMessage } from '../lib/chat.js'
+  import FileList from './FileList.svelte'
 
   let { roomId } = $props()
   let draft = $state('')
   let scrollBox = $state(null)
   let stickToBottom = $state(true)
+  let showRoomFiles = $state(false)
 
   const room = $derived(ws.rooms.find((r) => r.id === roomId))
   const onlineNames = $derived(chat.presence.map((p) => p.name).join('، '))
@@ -96,6 +98,19 @@
   </div>
 
   <footer class="border-t border-base-300 px-3 py-3">
+    <div class="mb-2 flex">
+      <button
+        class="btn btn-ghost btn-xs"
+        onclick={() => (showRoomFiles = !showRoomFiles)}
+      >
+        {showRoomFiles ? 'پنهان کردن فایل‌های اتاق' : 'فایل‌های اتاق'}
+      </button>
+    </div>
+    {#if showRoomFiles && room}
+      <div class="mb-3 rounded-xl bg-base-200 px-3 py-2">
+        <FileList projectId={room.project_id} attachedTo={{ type: 'room', id: room.id }} />
+      </div>
+    {/if}
     <div class="flex gap-2">
       <input
         class="input input-bordered input-sclack min-w-0 flex-1 bg-base-200"

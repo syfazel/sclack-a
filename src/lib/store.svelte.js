@@ -13,6 +13,8 @@ export const ws = $state({
   projects: [],
   rooms: [],
   members: [],
+  docs: [],
+  files: [],
   currentProjectId: null,
   currentRoomId: null,
   loading: false,

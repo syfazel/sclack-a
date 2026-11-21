@@ -1,6 +1,8 @@
 <script>
   import { auth, ws } from '../lib/store.svelte.js'
   import { createProject, loadRooms } from '../lib/data.js'
+  import { loadDocs } from '../lib/docs.js'
+  import FileList from './FileList.svelte'
 
   let newProjectName = $state('')
   let createError = $state('')
@@ -9,6 +11,7 @@
   async function openProject(p) {
     ws.currentProjectId = p.id
     await loadRooms(p.id)
+    await loadDocs(p.id)
     if (ws.rooms.length > 0) location.hash = '#/room/' + ws.rooms[0].id
   }
 
@@ -44,7 +47,9 @@
       <div class="card bg-base-200">
         <div class="card-body">
           <p class="font-medium">هنوز پروژه‌ای نیست</p>
-          <p class="text-sm opacity-70">اولین پروژه را با یک نام بسازید؛ اتاق «گفت‌وگو» خودش ساخته می‌شود.</p>
+          <p class="text-sm opacity-70">
+            اولین پروژه را با یک نام بسازید؛ اتاق «گفت‌وگو» و سند «سند» خودشان ساخته می‌شوند.
+          </p>
           <div class="mt-3 flex gap-2">
             <input
               class="input input-bordered input-sclack min-w-0 flex-1 bg-base-100"
@@ -98,4 +103,28 @@
       </ul>
     {/if}
   </section>
+
+  <section class="mt-8">
+    <h2 class="mb-2 text-lg font-bold">سندهای پروژهٔ جاری</h2>
+    {#if !ws.currentProjectId}
+      <p class="text-sm opacity-60">اول یک پروژه بسازید یا انتخاب کنید.</p>
+    {:else if ws.docs.length === 0}
+      <p class="text-sm opacity-60">سندی نیست.</p>
+    {:else}
+      <ul class="flex flex-col gap-1">
+        {#each ws.docs as d (d.id)}
+          <li>
+            <a href="#/doc/{d.id}" class="btn btn-ghost w-full justify-start">{d.title}</a>
+          </li>
+        {/each}
+      </ul>
+    {/if}
+  </section>
+
+  {#if ws.currentProjectId}
+    <section class="mt-8">
+      <h2 class="mb-2 text-lg font-bold">فایل‌های پروژهٔ جاری</h2>
+      <FileList projectId={ws.currentProjectId} />
+    </section>
+  {/if}
 </div>

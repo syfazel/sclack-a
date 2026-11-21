@@ -1,11 +1,16 @@
 <script>
   import { auth, ws, chat } from '../lib/store.svelte.js'
   import { createProject, loadRooms } from '../lib/data.js'
+  import { loadDocs, createDoc } from '../lib/docs.js'
   import { signOut, validateChangePassword, changePassword } from '../lib/auth.js'
 
   let newProjectName = $state('')
   let createError = $state('')
   let creating = $state(false)
+
+  let newDocTitle = $state('')
+  let docError = $state('')
+  let creatingDoc = $state(false)
 
   let showChange = $state(false)
   let currentPw = $state('')
@@ -57,10 +62,26 @@
     ws.currentProjectId = id
     ws.currentRoomId = null
     await loadRooms(id)
+    await loadDocs(id)
     if (ws.rooms.length > 0) {
       location.hash = '#/room/' + ws.rooms[0].id
     } else {
       location.hash = '#/'
+    }
+  }
+
+  async function doCreateDoc() {
+    if (creatingDoc || !ws.currentProjectId) return
+    creatingDoc = true
+    docError = ''
+    try {
+      const doc = await createDoc(ws.currentProjectId, newDocTitle)
+      newDocTitle = ''
+      location.hash = '#/doc/' + doc.id
+    } catch (e) {
+      docError = e.message || String(e)
+    } finally {
+      creatingDoc = false
     }
   }
 
@@ -164,6 +185,46 @@
   </section>
 
   <section>
+    <h2 class="mb-2 text-sm font-bold opacity-70">سندها</h2>
+    {#if !ws.currentProjectId}
+      <p class="text-sm opacity-60">اول یک پروژه انتخاب کنید.</p>
+    {:else if ws.docs.length === 0}
+      <p class="text-sm opacity-60">سندی نیست.</p>
+    {:else}
+      <ul class="flex flex-col gap-1">
+        {#each ws.docs as d (d.id)}
+          <li>
+            <a
+              href="#/doc/{d.id}"
+              class="btn btn-ghost btn-sm w-full justify-start"
+            >
+              {d.title}
+            </a>
+          </li>
+        {/each}
+      </ul>
+    {/if}
+    {#if ws.currentProjectId}
+      <div class="mt-2 flex gap-2">
+        <input
+          class="input input-sm input-bordered input-sclack min-w-0 flex-1 bg-base-100"
+          placeholder="نام سند تازه"
+          bind:value={newDocTitle}
+          onkeydown={(e) => {
+            if (e.key === 'Enter') doCreateDoc()
+          }}
+        />
+        <button class="btn btn-sclack btn-sm btn-primary" onclick={doCreateDoc} disabled={creatingDoc}>
+          ساختن
+        </button>
+      </div>
+      {#if docError}
+        <p class="mt-1 text-xs text-error">{docError}</p>
+      {/if}
+    {/if}
+  </section>
+
+  <section>
     <h2 class="mb-2 text-sm font-bold opacity-70">اعضا</h2>
     <ul class="flex flex-col gap-1">
       {#each seats as m, i}
@@ -258,6 +319,6 @@
       <p class="mb-2 text-xs text-error">ساخت ردیف عضو ناموفق بود: {auth.memberError}</p>
     {/if}
     <button class="btn btn-sclack btn-outline btn-sm w-full" onclick={signOut}>خروج از حساب</button>
-    <p class="mt-2 text-center text-xs opacity-50">sclack_A — اسکلت + چت (D3)</p>
+    <p class="mt-2 text-center text-xs opacity-50">sclack_A — اسکلت + چت + سند و فایل (D4)</p>
   </div>
 </aside>

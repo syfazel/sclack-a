@@ -10,6 +10,7 @@
   import HomeView from './components/HomeView.svelte'
   import RoomsView from './components/RoomsView.svelte'
   import ChatView from './components/ChatView.svelte'
+  import DocView from './components/DocView.svelte'
   import MembersView from './components/MembersView.svelte'
   import PlaceholderView from './components/PlaceholderView.svelte'
 
@@ -23,6 +24,8 @@
     if (h === '/members') return { name: 'members' }
     const m = h.match(/^\/room\/(.+)$/)
     if (m) return { name: 'room', roomId: m[1] }
+    const d = h.match(/^\/doc\/(.+)$/)
+    if (d) return { name: 'doc', docId: d[1] }
     return { name: 'home' }
   })
 
@@ -98,6 +101,8 @@
         <RoomsView />
       {:else if route.name === 'room'}
         <ChatView roomId={route.roomId} />
+      {:else if route.name === 'doc'}
+        <DocView docId={route.docId} />
       {:else if route.name === 'tasks'}
         <PlaceholderView
           title="کارها"
