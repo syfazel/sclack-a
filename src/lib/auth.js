@@ -111,3 +111,26 @@ export async function signOut() {
   auth.member = null
   auth.memberError = null
 }
+
+// ---------- change password ----------
+// Client-side validation first; then re-authenticate with the current
+// password (proves the user knows it) and update the password.
+// signInWithPassword refreshes the session, so the user stays signed in.
+export function validateChangePassword(current, next, confirm) {
+  if (!current || !next || !confirm) return 'هر سه فیلد را کامل وارد کنید.'
+  if (next.length < 6) return 'رمز تازه باید دست‌کم ۶ نویسه باشد.'
+  if (next !== confirm) return 'تکرار رمز تازه با رمز تازه یکی نیست.'
+  if (next === current) return 'رمز تازه باید با رمز فعلی فرق کند.'
+  return null
+}
+
+export async function changePassword(email, current, next) {
+  const { error: authErr } = await sb.auth.signInWithPassword({
+    email,
+    password: current
+  })
+  if (authErr) return { ok: false, ...authErrorMessage('تأیید رمز فعلی', authErr) }
+  const { error } = await sb.auth.updateUser({ password: next })
+  if (error) return { ok: false, ...authErrorMessage('تغییر رمز', error) }
+  return { ok: true, text: 'رمز عبور با موفقیت تغییر کرد.', kind: 'ok' }
+}

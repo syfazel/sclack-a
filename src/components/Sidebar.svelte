@@ -1,11 +1,47 @@
 <script>
   import { auth, ws, chat } from '../lib/store.svelte.js'
   import { createProject, loadRooms } from '../lib/data.js'
-  import { signOut } from '../lib/auth.js'
+  import { signOut, validateChangePassword, changePassword } from '../lib/auth.js'
 
   let newProjectName = $state('')
   let createError = $state('')
   let creating = $state(false)
+
+  let showChange = $state(false)
+  let currentPw = $state('')
+  let newPw = $state('')
+  let confirmPw = $state('')
+  let changeMsg = $state('')
+  let changeMsgKind = $state('')
+  let changing = $state(false)
+
+  async function doChangePassword() {
+    if (changing) return
+    const bad = validateChangePassword(currentPw, newPw, confirmPw)
+    if (bad) {
+      changeMsg = bad
+      changeMsgKind = 'error'
+      return
+    }
+    const email = auth.user?.email
+    if (!email) {
+      changeMsg = 'نشست شما پیدا نشد؛ دوباره وارد شوید.'
+      changeMsgKind = 'error'
+      return
+    }
+    changing = true
+    changeMsg = 'در حال تغییر رمز…'
+    changeMsgKind = ''
+    const res = await changePassword(email, currentPw, newPw)
+    changeMsg = res.text
+    changeMsgKind = res.kind
+    if (res.ok) {
+      currentPw = ''
+      newPw = ''
+      confirmPw = ''
+    }
+    changing = false
+  }
 
   const seats = $derived.by(() => {
     const list = [...ws.members].slice(0, 4)
@@ -148,6 +184,73 @@
         </li>
       {/each}
     </ul>
+  </section>
+
+  <section>
+    <button
+      class="btn btn-ghost btn-sm w-full justify-start"
+      onclick={() => (showChange = !showChange)}
+    >
+      تغییر رمز
+    </button>
+    {#if showChange}
+      <div class="mt-2 flex flex-col gap-2">
+        <label class="form-control w-full">
+          <span class="label-text mb-1">رمز فعلی</span>
+          <input
+            type="password"
+            class="input input-sclack input-bordered w-full bg-base-100"
+            placeholder="••••••••"
+            bind:value={currentPw}
+            disabled={changing}
+            dir="ltr"
+          />
+        </label>
+        <label class="form-control w-full">
+          <span class="label-text mb-1">رمز تازه</span>
+          <input
+            type="password"
+            class="input input-sclack input-bordered w-full bg-base-100"
+            placeholder="••••••••"
+            bind:value={newPw}
+            disabled={changing}
+            dir="ltr"
+          />
+        </label>
+        <label class="form-control w-full">
+          <span class="label-text mb-1">تکرار رمز تازه</span>
+          <input
+            type="password"
+            class="input input-sclack input-bordered w-full bg-base-100"
+            placeholder="••••••••"
+            bind:value={confirmPw}
+            disabled={changing}
+            dir="ltr"
+            onkeydown={(e) => {
+              if (e.key === 'Enter') doChangePassword()
+            }}
+          />
+        </label>
+        {#if changeMsg}
+          <p
+            class="text-xs {changeMsgKind === 'error'
+              ? 'text-error'
+              : changeMsgKind === 'ok'
+                ? 'text-success'
+                : 'opacity-70'}"
+          >
+            {changeMsg}
+          </p>
+        {/if}
+        <button
+          class="btn btn-sclack btn-primary w-full"
+          onclick={doChangePassword}
+          disabled={changing}
+        >
+          {changing ? '…' : 'ذخیرهٔ رمز تازه'}
+        </button>
+      </div>
+    {/if}
   </section>
 
   <div class="mt-auto">
