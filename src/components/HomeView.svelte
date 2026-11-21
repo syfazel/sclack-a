@@ -1,6 +1,6 @@
 <script>
   import { auth, ws, chat } from '../lib/store.svelte.js'
-  import { createProject, closeProject, loadProjectData } from '../lib/data.js'
+  import { createProject, closeProject, deleteProject, loadProjectData } from '../lib/data.js'
   import {
     PROJECT_STAGE_LABEL,
     endOfTehranDay,
@@ -25,6 +25,27 @@
 
   let closeError = $state('')
   let closingId = $state(null)
+
+  // G1 item 8 — project delete: creator only (w1), two-tap in-app
+  // confirm with a warning (no native confirm()). A delete that the
+  // pre-check refuses (other members' rows, versioned docs) shows its
+  // clear error under the projects list instead of deleting anything.
+  let armDeleteProjectId = $state(null)
+  let deleteError = $state('')
+
+  async function doDeleteProject(p) {
+    if (armDeleteProjectId !== p.id) {
+      armDeleteProjectId = p.id
+      return
+    }
+    armDeleteProjectId = null
+    deleteError = ''
+    try {
+      await deleteProject(p)
+    } catch (e) {
+      deleteError = e.message || String(e)
+    }
+  }
 
   // Default the member checkboxes to every workspace member once they load.
   $effect(() => {
@@ -264,7 +285,17 @@
                 {/if}
                 <p class="text-sm"><span class="opacity-60">مرحله: </span>{stageLabel(p)}</p>
               </button>
-              <div class="mt-2 flex justify-end">
+              <div class="mt-2 flex flex-wrap justify-end gap-2">
+                {#if auth.member && p.created_by === auth.member.id}
+                  <button
+                    class="btn btn-ghost btn-sm {armDeleteProjectId === p.id ? 'btn-error' : 'text-error'}"
+                    title="حذف پروژه"
+                    onclick={() => doDeleteProject(p)}
+                    disabled={closingId === p.id}
+                  >
+                    {armDeleteProjectId === p.id ? 'مطمئنید؟ حذف پروژه' : 'حذف پروژه'}
+                  </button>
+                {/if}
                 <button
                   class="btn btn-ghost btn-sm"
                   onclick={() => doCloseProject(p)}
@@ -274,12 +305,21 @@
                   بستن پروژه
                 </button>
               </div>
+              {#if armDeleteProjectId === p.id}
+                <p class="mt-1 text-xs text-error">
+                  با تپ دوم، همهٔ اتاق‌ها، پیام‌ها، سندها، فایل‌ها و کارهای پروژه پاک می‌شوند و
+                  برنمی‌گردند.
+                </p>
+              {/if}
             </div>
           </div>
         {/each}
       </div>
       {#if closeError}
         <p class="mt-2 text-xs text-error">{closeError}</p>
+      {/if}
+      {#if deleteError}
+        <p class="mt-2 text-xs text-error">{deleteError}</p>
       {/if}
     {/if}
   </section>
@@ -314,11 +354,31 @@
                   <p class="text-sm"><span class="opacity-60">بسته‌شده در: </span>{fmtDate(p.custom_fields.closed_at)}</p>
                 {/if}
               </button>
+              {#if auth.member && p.created_by === auth.member.id}
+                <div class="mt-2 flex justify-end">
+                  <button
+                    class="btn btn-ghost btn-sm {armDeleteProjectId === p.id ? 'btn-error' : 'text-error'}"
+                    title="حذف پروژه"
+                    onclick={() => doDeleteProject(p)}
+                  >
+                    {armDeleteProjectId === p.id ? 'مطمئنید؟ حذف پروژه' : 'حذف پروژه'}
+                  </button>
+                </div>
+                {#if armDeleteProjectId === p.id}
+                  <p class="mt-1 text-xs text-error">
+                    با تپ دوم، همهٔ اتاق‌ها، پیام‌ها، سندها، فایل‌ها و کارهای پروژه پاک می‌شوند و
+                    برنمی‌گردند.
+                  </p>
+                {/if}
+              {/if}
             </div>
           </div>
         {/each}
       </div>
-      <p class="mt-2 text-xs opacity-60">پروژه‌های بایگانی‌شده پاک نمی‌شوند؛ سند و فایل و کارهایشان خواندنی می‌مانند.</p>
+      {#if deleteError}
+        <p class="mt-2 text-xs text-error">{deleteError}</p>
+      {/if}
+      <p class="mt-2 text-xs opacity-60">بستن پروژه چیزی را پاک نمی‌کند؛ برای پاک‌کردن کامل، دکمهٔ «حذف پروژه» روی کارت سازندهٔ پروژه است.</p>
     </section>
   {/if}
 

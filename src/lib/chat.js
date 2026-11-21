@@ -82,7 +82,69 @@ export function unsubscribeRoom() {
   chat.typing = []
 }
 
-// Throttled to one broadcast per 2 seconds per client.
+// Delete a message (G1 item 8): author only (D2 delete policy), two-tap
+// confirm in the UI (ChatView). A parent with replies is deleted with
+// its replies — but only the author's OWN replies: messages.parent_id
+// has no ON DELETE CASCADE, and a reply is deletable only by its own
+// author, so another member's reply blocks the parent delete with a
+// clear error. Own notification pointers at the message (and its
+// replies) are removed first; other members' pointers stay (they are
+// recipient-owned) and the notifications list already renders a
+// missing message without a sender.
+export async function deleteMessage(message) {
+  if (!message?.id) throw new Error('پیام مشخص نیست.')
+  if (!auth.member) throw new Error('ردیف عضو هنوز ساخته نشده است.')
+  if (message.author_id !== auth.member.id) {
+    throw new Error('پیام حذف نشد — فقط نویسندهٔ پیام می‌تواند آن را حذف کند.')
+  }
+  const { data: replies, error: rerr } = await sb
+    .from('messages')
+    .select('id, author_id')
+    .eq('parent_id', message.id)
+  if (rerr) throw rerr
+  const foreignReplies = (replies || []).filter((r) => r.author_id !== auth.member.id)
+  if (foreignReplies.length > 0) {
+    throw new Error(
+      'پیام حذف نشد — ' +
+        foreignReplies.length +
+        ' پاسخ از عضو دیگر دارد؛ اول باید نویسندهٔ آن پاسخ‌ها خودشان حذفشان کنند.'
+    )
+  }
+  const ids = [message.id, ...(replies || []).map((r) => r.id)]
+  // Best effort: a pointer failure must not block the delete itself.
+  try {
+    await sb
+      .from('notifications')
+      .delete()
+      .eq('user_id', auth.member.id)
+      .in('target_id', ids)
+  } catch {
+    // Orphan pointers are rendered without a sender by the list view.
+  }
+  for (const r of replies || []) {
+    await deleteRowById(
+      'messages',
+      r.id,
+      'پیام حذف نشد — یا وجود ندارد یا فقط نویسندهٔ آن می‌تواند حذفش کند.'
+    )
+  }
+  await deleteRowById(
+    'messages',
+    message.id,
+    'پیام حذف نشد — یا وجود ندارد یا فقط نویسندهٔ آن می‌تواند حذفش کند.'
+  )
+  await loadMessages(message.room_id)
+}
+
+// Delete one row by id and prove it is really gone: PostgREST DELETE
+// without .select() answers success even when RLS blocks the delete
+// (0 rows affected) — the silent no-op behind the live G1 bugs.
+async function deleteRowById(table, id, failMessage) {
+  const { data, error } = await sb.from(table).delete().eq('id', id).select('id')
+  if (error) throw error
+  if (!data || data.length === 0) throw new Error(failMessage)
+  return data[0]
+}
 export function sendTyping() {
   if (!channel || !auth.member) return
   const now = Date.now()

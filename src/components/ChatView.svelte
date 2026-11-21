@@ -1,7 +1,7 @@
 <script>
   import { auth, ws, chat } from '../lib/store.svelte.js'
   import { memberName } from '../lib/data.js'
-  import { loadMessages, subscribeRoom, unsubscribeRoom, sendTyping, sendMessage } from '../lib/chat.js'
+  import { loadMessages, subscribeRoom, unsubscribeRoom, sendTyping, sendMessage, deleteMessage } from '../lib/chat.js'
   import { filterMentionSuggestions, renderMentionSegments } from '../lib/mentions.js'
   import FileList from './FileList.svelte'
 
@@ -99,6 +99,27 @@
     if (e.key === 'Enter') doSend()
   }
 
+  // G1 item 8 — message delete: author only (D2), two-tap in-app
+  // confirm, same pattern as task/file delete. No native confirm().
+  let armDeleteMsgId = $state(null)
+  let deleteErrorById = $state({})
+
+  async function doDeleteMessage(m) {
+    if (armDeleteMsgId !== m.id) {
+      armDeleteMsgId = m.id
+      return
+    }
+    armDeleteMsgId = null
+    try {
+      await deleteMessage(m)
+      const { [m.id]: _gone, ...rest } = deleteErrorById
+      deleteErrorById = rest
+      if (replyTo && (replyTo.id === m.id || replyTo.parent_id === m.id)) replyTo = null
+    } catch (e) {
+      deleteErrorById = { ...deleteErrorById, [m.id]: e.message || String(e) }
+    }
+  }
+
   function startReply(m) {
     replyTo = m
     if (inputEl) inputEl.focus()
@@ -158,7 +179,19 @@
                   {#if replies.length > 0}
                     <span class="text-xs opacity-60">{replies.length} پاسخ</span>
                   {/if}
+                  {#if mine}
+                    <button
+                      class="btn btn-ghost btn-xs {armDeleteMsgId === m.id ? 'btn-error' : 'text-error'}"
+                      title="حذف پیام"
+                      onclick={() => doDeleteMessage(m)}
+                    >
+                      {armDeleteMsgId === m.id ? 'مطمئنید؟' : 'حذف'}
+                    </button>
+                  {/if}
                 </div>
+                {#if deleteErrorById[m.id]}
+                  <p class="mt-1 text-xs text-error">{deleteErrorById[m.id]}</p>
+                {/if}
               </div>
             </div>
             {#if replies.length > 0}
@@ -178,7 +211,19 @@
                         <button class="btn btn-ghost btn-xs" onclick={() => startReply(r)}>
                           پاسخ
                         </button>
+                        {#if rmine}
+                          <button
+                            class="btn btn-ghost btn-xs {armDeleteMsgId === r.id ? 'btn-error' : 'text-error'}"
+                            title="حذف پیام"
+                            onclick={() => doDeleteMessage(r)}
+                          >
+                            {armDeleteMsgId === r.id ? 'مطمئنید؟' : 'حذف'}
+                          </button>
+                        {/if}
                       </div>
+                      {#if deleteErrorById[r.id]}
+                        <p class="mt-1 text-xs text-error">{deleteErrorById[r.id]}</p>
+                      {/if}
                     </div>
                   </li>
                 {/each}

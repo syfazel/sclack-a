@@ -1,7 +1,7 @@
 import { sb } from './supabase.js'
 import { auth, ws } from './store.svelte.js'
 import { validateProjectForm } from './extract.js'
-import { loadDocs, createAutoDoc, listFiles } from './docs.js'
+import { loadDocs, createAutoDoc, listFiles, FILES_BUCKET } from './docs.js'
 import { loadTasks, loadTemplates, loadReminders } from './work.js'
 import { refreshUnreadCount } from './notifications.js'
 
@@ -158,4 +158,220 @@ export async function closeProject(project) {
 export function memberName(memberId) {
   const m = ws.members.find((x) => x.id === memberId)
   return m ? m.name : 'عضو'
+}
+
+// ---------- delete a project (G1 item 8) ----------
+// Creator only (w1 projects delete own), two-tap confirm in the UI
+// (HomeView). The schema has NO ON DELETE CASCADE anywhere, so every
+// child is deleted explicitly, FK-safe: notifications/reminders (own
+// pointers) → messages (replies, then parents) → rooms → comments
+// (replies, then parents) → docs → files (storage objects first, then
+// rows) → tasks → the project row.
+// A pre-check refuses the delete — deleting NOTHING — when a child
+// cannot be removed under RLS:
+//  * any version row under the project's docs: versions have NO delete
+//    policy at all (immutable by design, w1) and versions.doc_id has no
+//    cascade, so no member can ever remove them;
+//  * any child row owned by another member (room/message/doc/comment/
+//    file/task): RLS delete is owner-only.
+// Other members' notification/reminder pointers at the project's rows
+// cannot be deleted either (recipient-only) but carry no FK, so they
+// stay as orphans and do NOT block the delete; the notifications list
+// already renders a missing target without a sender.
+
+async function loadProjectChildren(projectId) {
+  const me = auth.member.id
+  const { data: rooms, error: rerr } = await sb
+    .from('rooms')
+    .select('id, created_by')
+    .eq('project_id', projectId)
+  if (rerr) throw rerr
+  const roomIds = (rooms || []).map((r) => r.id)
+  const { data: messages, error: merr } =
+    roomIds.length > 0
+      ? await sb.from('messages').select('id, author_id, parent_id').in('room_id', roomIds)
+      : { data: [] }
+  if (merr) throw merr
+  const { data: docs, error: derr } = await sb
+    .from('docs')
+    .select('id, created_by')
+    .eq('project_id', projectId)
+  if (derr) throw derr
+  const docIds = (docs || []).map((d) => d.id)
+  const { data: comments, error: cerr } =
+    docIds.length > 0
+      ? await sb.from('comments').select('id, author_id, parent_id').in('doc_id', docIds)
+      : { data: [] }
+  if (cerr) throw cerr
+  const { data: versions, error: verr } =
+    docIds.length > 0
+      ? await sb.from('versions').select('id').in('doc_id', docIds)
+      : { data: [] }
+  if (verr) throw verr
+  const { data: files, error: ferr } = await sb
+    .from('files')
+    .select('id, uploaded_by, storage_path')
+    .eq('project_id', projectId)
+  if (ferr) throw ferr
+  const { data: tasks, error: terr } = await sb
+    .from('tasks')
+    .select('id, created_by')
+    .eq('project_id', projectId)
+  if (terr) throw terr
+  const allIds = [
+    projectId,
+    ...roomIds,
+    ...(messages || []).map((m) => m.id),
+    ...docIds,
+    ...(files || []).map((f) => f.id),
+    ...(tasks || []).map((t) => t.id)
+  ]
+  const { data: myNotifications, error: nerr } =
+    allIds.length > 0
+      ? await sb.from('notifications').select('id').eq('user_id', me).in('target_id', allIds)
+      : { data: [] }
+  if (nerr) throw nerr
+  const { data: myReminders, error: remerr } =
+    allIds.length > 0
+      ? await sb.from('reminders').select('id').eq('user_id', me).in('target_id', allIds)
+      : { data: [] }
+  if (remerr) throw remerr
+  return {
+    rooms: rooms || [],
+    messages: messages || [],
+    docs: docs || [],
+    comments: comments || [],
+    versions: versions || [],
+    files: files || [],
+    tasks: tasks || [],
+    myNotifications: myNotifications || [],
+    myReminders: myReminders || []
+  }
+}
+
+// Rows that make the project undeletable, as Persian fragments for the
+// refusal message (empty = the delete may proceed).
+function projectDeleteBlockers(children, me) {
+  const out = []
+  const byOwner = (rows, ownerCol, label) => {
+    const foreign = rows.filter((r) => r[ownerCol] !== me)
+    if (foreign.length === 0) return
+    const byName = {}
+    for (const r of foreign) {
+      const name = memberName(r[ownerCol])
+      byName[name] = (byName[name] || 0) + 1
+    }
+    for (const [name, n] of Object.entries(byName)) out.push(n + ' ' + label + ' از ' + name)
+  }
+  if (children.versions.length > 0) {
+    out.push(
+      children.versions.length +
+        ' نسخهٔ ذخیره‌شده دارد (نسخه‌ها تغییرناپذیرند و هیچ‌کس نمی‌تواند آن‌ها را حذف کند)'
+    )
+  }
+  byOwner(children.rooms, 'created_by', 'اتاق')
+  byOwner(children.messages, 'author_id', 'پیام')
+  byOwner(children.docs, 'created_by', 'سند')
+  byOwner(children.comments, 'author_id', 'نظر')
+  byOwner(children.files, 'uploaded_by', 'فایل')
+  byOwner(children.tasks, 'created_by', 'کار')
+  return out
+}
+
+// Delete a set of rows by id and prove all of them are really gone
+// (same 0-row trap as deleteTask/deleteFile: without .select() a
+// blocked delete answers success).
+async function deleteRowsByIds(table, ids) {
+  if (!ids || ids.length === 0) return []
+  const { data, error } = await sb.from(table).delete().in('id', ids).select('id')
+  if (error) throw error
+  if (!data || data.length !== ids.length) {
+    throw new Error(
+      'حذف پروژه ناتمام ماند — ' +
+        (ids.length - (data || []).length) +
+        ' ردیف از ' +
+        table +
+        ' باقی ماند؛ دوباره امتحان کنید.'
+    )
+  }
+  return data
+}
+
+export async function deleteProject(project) {
+  if (!project?.id) throw new Error('پروژه مشخص نیست.')
+  if (!auth.member) throw new Error('ردیف عضو هنوز ساخته نشده است.')
+  if (project.created_by !== auth.member.id) {
+    throw new Error('پروژه حذف نشد — فقط سازندهٔ پروژه می‌تواند آن را حذف کند.')
+  }
+  const me = auth.member.id
+  const children = await loadProjectChildren(project.id)
+  const blockers = projectDeleteBlockers(children, me)
+  if (blockers.length > 0) {
+    throw new Error('پروژه حذف نشد — ' + blockers.join('؛ ') + '.')
+  }
+  // Storage objects first: if the bucket removal fails, nothing has
+  // been deleted yet and the error aborts cleanly.
+  const paths = children.files.map((f) => f.storage_path).filter(Boolean)
+  if (paths.length > 0) {
+    const { error } = await sb.storage.from(FILES_BUCKET).remove(paths)
+    if (error) {
+      throw new Error('حذف فایل‌ها از انباره ناموفق بود: ' + (error.message || String(error)))
+    }
+  }
+  await deleteRowsByIds(
+    'notifications',
+    children.myNotifications.map((n) => n.id)
+  )
+  await deleteRowsByIds(
+    'reminders',
+    children.myReminders.map((r) => r.id)
+  )
+  // Messages: replies before parents (parent_id has no cascade).
+  await deleteRowsByIds(
+    'messages',
+    children.messages.filter((m) => m.parent_id).map((m) => m.id)
+  )
+  await deleteRowsByIds(
+    'messages',
+    children.messages.filter((m) => !m.parent_id).map((m) => m.id)
+  )
+  await deleteRowsByIds(
+    'rooms',
+    children.rooms.map((r) => r.id)
+  )
+  // Comments: replies before parents (same self-FK shape).
+  await deleteRowsByIds(
+    'comments',
+    children.comments.filter((c) => c.parent_id).map((c) => c.id)
+  )
+  await deleteRowsByIds(
+    'comments',
+    children.comments.filter((c) => !c.parent_id).map((c) => c.id)
+  )
+  await deleteRowsByIds(
+    'docs',
+    children.docs.map((d) => d.id)
+  )
+  await deleteRowsByIds(
+    'files',
+    children.files.map((f) => f.id)
+  )
+  await deleteRowsByIds(
+    'tasks',
+    children.tasks.map((t) => t.id)
+  )
+  const { data, error } = await sb
+    .from('projects')
+    .delete()
+    .eq('id', project.id)
+    .select('id')
+  if (error) throw error
+  if (!data || data.length === 0) {
+    throw new Error('پروژه حذف نشد — یا وجود ندارد یا فقط سازندهٔ آن می‌تواند حذفش کند.')
+  }
+  if (ws.currentProjectId === project.id) {
+    ws.currentProjectId = null
+    ws.currentRoomId = null
+  }
+  await loadWorkspace()
 }
