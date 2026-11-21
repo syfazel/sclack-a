@@ -14,6 +14,7 @@
   } from '../lib/docs.js'
   import { createYDoc, connectBroadcast, bindTextarea, applyDocState } from '../lib/yjs-sync.js'
   import FileList from './FileList.svelte'
+  import VersionsPanel from './VersionsPanel.svelte'
 
   let { docId } = $props()
 
@@ -296,6 +297,11 @@
       {/if}
       <div class="border-t border-base-300 px-4 py-4">
         <FileList projectId={docRow.project_id} attachedTo={{ type: 'doc', id: docRow.id }} />
+      </div>
+      <div class="border-t border-base-300 px-4 py-4">
+        {#if ydoc}
+          <VersionsPanel docRow={docRow} {ydoc} saveNow={flushSave} />
+        {/if}
       </div>
     {/if}
   </div>

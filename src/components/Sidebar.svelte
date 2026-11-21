@@ -2,7 +2,9 @@
   import { auth, ws, chat } from '../lib/store.svelte.js'
   import { createProject, loadRooms } from '../lib/data.js'
   import { loadDocs, createDoc } from '../lib/docs.js'
+  import { loadTasks } from '../lib/work.js'
   import { signOut, validateChangePassword, changePassword } from '../lib/auth.js'
+  import SearchBox from './SearchBox.svelte'
 
   let newProjectName = $state('')
   let createError = $state('')
@@ -63,6 +65,7 @@
     ws.currentRoomId = null
     await loadRooms(id)
     await loadDocs(id)
+    await loadTasks(id)
     if (ws.rooms.length > 0) {
       location.hash = '#/room/' + ws.rooms[0].id
     } else {
@@ -118,6 +121,16 @@
     </svg>
     <span class="text-xl font-bold">sclack_A</span>
   </a>
+
+  <SearchBox />
+
+  <section>
+    <h2 class="mb-2 text-sm font-bold opacity-70">دستیار میوز</h2>
+    <a href="#/assistant" class="btn btn-ghost btn-sm w-full justify-start">
+      دستیار میوز — خلاصه و پیشنهاد
+    </a>
+    <p class="mt-1 text-xs opacity-50">فقط استخراجی؛ جمله‌ای ساخته نمی‌شود.</p>
+  </section>
 
   <section>
     <h2 class="mb-2 text-sm font-bold opacity-70">پروژه‌ها</h2>
@@ -319,6 +332,6 @@
       <p class="mb-2 text-xs text-error">ساخت ردیف عضو ناموفق بود: {auth.memberError}</p>
     {/if}
     <button class="btn btn-sclack btn-outline btn-sm w-full" onclick={signOut}>خروج از حساب</button>
-    <p class="mt-2 text-center text-xs opacity-50">sclack_A — اسکلت + چت + سند و فایل (D4)</p>
+    <p class="mt-2 text-center text-xs opacity-50">sclack_A — اسکلت + چت + سند و فایل + کار و حافظه + دستیار (D5)</p>
   </div>
 </aside>

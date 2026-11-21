@@ -2,6 +2,7 @@
   import { auth, ws } from '../lib/store.svelte.js'
   import { createProject, loadRooms } from '../lib/data.js'
   import { loadDocs } from '../lib/docs.js'
+  import { loadTasks } from '../lib/work.js'
   import FileList from './FileList.svelte'
 
   let newProjectName = $state('')
@@ -12,6 +13,7 @@
     ws.currentProjectId = p.id
     await loadRooms(p.id)
     await loadDocs(p.id)
+    await loadTasks(p.id)
     if (ws.rooms.length > 0) location.hash = '#/room/' + ws.rooms[0].id
   }
 

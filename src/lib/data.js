@@ -1,6 +1,7 @@
 import { sb } from './supabase.js'
 import { auth, ws } from './store.svelte.js'
 import { loadDocs, createAutoDoc } from './docs.js'
+import { loadTasks, loadTemplates, loadReminders } from './work.js'
 
 // Workspace data: projects, rooms, members, docs, files. Reads only what
 // RLS allows the signed-in member to see. No test data is ever written here.
@@ -24,7 +25,10 @@ export async function loadWorkspace() {
   if (ws.currentProjectId) {
     await loadRooms(ws.currentProjectId)
     await loadDocs(ws.currentProjectId)
+    await loadTasks(ws.currentProjectId)
   }
+  await loadTemplates()
+  await loadReminders()
 }
 
 export async function loadRooms(projectId) {

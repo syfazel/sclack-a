@@ -64,3 +64,29 @@ body {
 .msg-other {
   background: #ffffff;
 }
+
+/* اکسنت بنفش دستیار میوز — فقط داخل پنل دستیار استفاده می‌شود، هیچ‌جای دیگر سایت بنفش نیست */
+:root {
+  --ai-accent: #7c3aed;
+}
+
+.ai-panel {
+  border: 1px solid var(--ai-accent);
+}
+
+.ai-panel .ai-title {
+  color: var(--ai-accent);
+}
+
+.btn-ai {
+  background: var(--ai-accent);
+  color: #ffffff;
+  height: 44px;
+  min-height: 44px;
+  border-radius: 14px;
+  font-weight: 500;
+}
+
+.btn-ai:hover {
+  background: #6d28d9;
+}

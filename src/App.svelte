@@ -11,8 +11,9 @@
   import RoomsView from './components/RoomsView.svelte'
   import ChatView from './components/ChatView.svelte'
   import DocView from './components/DocView.svelte'
+  import TasksView from './components/TasksView.svelte'
+  import AssistantView from './components/AssistantView.svelte'
   import MembersView from './components/MembersView.svelte'
-  import PlaceholderView from './components/PlaceholderView.svelte'
 
   let hash = $state(typeof location !== 'undefined' ? location.hash || '#/' : '#/')
 
@@ -21,6 +22,7 @@
     if (h === '/' || h === '') return { name: 'home' }
     if (h === '/rooms') return { name: 'rooms' }
     if (h === '/tasks') return { name: 'tasks' }
+    if (h === '/assistant') return { name: 'assistant' }
     if (h === '/members') return { name: 'members' }
     const m = h.match(/^\/room\/(.+)$/)
     if (m) return { name: 'room', roomId: m[1] }
@@ -69,6 +71,11 @@
           ws.projects = []
           ws.rooms = []
           ws.members = []
+          ws.docs = []
+          ws.files = []
+          ws.tasks = []
+          ws.templates = []
+          ws.reminders = []
           ws.currentProjectId = null
           ws.currentRoomId = null
         }
@@ -104,10 +111,9 @@
       {:else if route.name === 'doc'}
         <DocView docId={route.docId} />
       {:else if route.name === 'tasks'}
-        <PlaceholderView
-          title="کارها"
-          note="فهرست کار، قالب و یادآوری در فاز D5 می‌آیند. فعلاً این صفحه جای خالی است."
-        />
+        <TasksView />
+      {:else if route.name === 'assistant'}
+        <AssistantView />
       {:else if route.name === 'members'}
         <MembersView />
       {/if}

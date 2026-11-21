@@ -6,9 +6,8 @@ import { auth, chat } from './store.svelte.js'
 // created with private: true — otherwise the subscription is rejected
 // (PrivateOnly). Presence + typing ride on the same private channel via
 // Broadcast; they are never stored.
-// NOTE: the messages policy is still author-only (W0) — until D2 changes it
-// to room-members, a signed-in user sees only their own messages. That is
-// the lock working, not a bug.
+// NOTE: since D2 (~19:42) the messages policy is room-members — a signed-in
+// user sees the messages of rooms they can see, not only their own.
 
 let channel = null
 let lastTypingAt = 0
