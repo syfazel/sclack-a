@@ -1,5 +1,6 @@
 <script>
   import { auth, ws, chat } from '../lib/store.svelte.js'
+  import { updateDisplayName } from '../lib/auth.js'
 
   const seats = $derived.by(() => {
     const list = [...ws.members].slice(0, 4)
@@ -7,8 +8,32 @@
     return list
   })
 
+  // Display-name editor (own row only): `name` is the display name and
+  // the mention system matches on it; `username` (email local part) is
+  // the stable second handle. The name is stored on the members row and
+  // is never overwritten by login anymore (auth.js ensureMember).
+  let displayNameDraft = $state('')
+  let displayNameMsg = $state('')
+  let displayNameBusy = $state(false)
+  let displayNameEditing = $state(false)
+
   function isOnline(memberId) {
     return chat.presence.some((p) => p.memberId === memberId)
+  }
+
+  async function saveDisplayName() {
+    if (!auth.member || displayNameBusy) return
+    displayNameBusy = true
+    displayNameMsg = ''
+    try {
+      await updateDisplayName(displayNameDraft)
+      displayNameMsg = 'نام نمایشی ذخیره شد.'
+      displayNameEditing = false
+    } catch (e) {
+      displayNameMsg = 'ذخیره نشد: ' + (e.message || String(e))
+    } finally {
+      displayNameBusy = false
+    }
   }
 
   function fmtDate(iso) {
@@ -40,7 +65,52 @@
                   <span class="text-sm font-normal opacity-60">(شما)</span>
                 {/if}
               </p>
+              {#if m.username && m.username !== m.name}
+                <p class="text-xs opacity-50" dir="ltr">@{m.username}</p>
+              {/if}
               <p class="text-sm opacity-60">عضو از {fmtDate(m.joined_at)}</p>
+              {#if auth.member && m.id === auth.member.id}
+                {#if displayNameEditing}
+                  <div class="mt-2 flex flex-wrap items-center gap-2">
+                    <input
+                      class="input input-bordered input-sm bg-base-100"
+                      placeholder="نام نمایشی — مثلاً زهرا"
+                      bind:value={displayNameDraft}
+                      disabled={displayNameBusy}
+                    />
+                    <button
+                      class="btn btn-primary btn-sm"
+                      onclick={saveDisplayName}
+                      disabled={displayNameBusy}
+                    >
+                      ذخیره
+                    </button>
+                    <button
+                      class="btn btn-ghost btn-sm"
+                      onclick={() => {
+                        displayNameEditing = false
+                        displayNameMsg = ''
+                      }}
+                    >
+                      لغو
+                    </button>
+                  </div>
+                {:else}
+                  <button
+                    class="btn btn-ghost btn-xs mt-1"
+                    onclick={() => {
+                      displayNameDraft = auth.member?.name || ''
+                      displayNameMsg = ''
+                      displayNameEditing = true
+                    }}
+                  >
+                    تغییر نام نمایشی
+                  </button>
+                {/if}
+                {#if displayNameMsg}
+                  <p class="mt-1 text-xs opacity-70">{displayNameMsg}</p>
+                {/if}
+              {/if}
             </div>
             {#if isOnline(m.id)}
               <span class="badge badge-success me-auto">آنلاین</span>

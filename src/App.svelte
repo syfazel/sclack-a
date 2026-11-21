@@ -2,7 +2,7 @@
   import { onMount } from 'svelte'
   import { auth, ws, notif } from './lib/store.svelte.js'
   import { sb, isConfigured } from './lib/supabase.js'
-  import { ensureMember } from './lib/auth.js'
+  import { ensureMember, handleAuthEvent, stashSession } from './lib/auth.js'
   import { loadWorkspace, loadProjectData } from './lib/data.js'
   import { unsubscribeRoom } from './lib/chat.js'
   import { refreshUnreadCount } from './lib/notifications.js'
@@ -72,6 +72,34 @@
     }
   })
 
+  // Signed-in state, shared by the initial getSession() restore and the
+  // onAuthStateChange handler (auth.js handleAuthEvent).
+  async function onSignedIn(user) {
+    auth.user = user
+    await ensureMember(user)
+    await loadWorkspace()
+    await refreshUnreadCount()
+  }
+
+  function onSignedOut() {
+    auth.user = null
+    auth.member = null
+    unsubscribeRoom()
+    ws.projects = []
+    ws.archivedProjects = []
+    ws.rooms = []
+    ws.members = []
+    ws.docs = []
+    ws.files = []
+    ws.tasks = []
+    ws.templates = []
+    ws.reminders = []
+    ws.currentProjectId = null
+    ws.currentRoomId = null
+    notif.notifications = []
+    notif.unreadCount = 0
+  }
+
   onMount(() => {
     window.addEventListener('hashchange', onHashChange)
     let authSub = null
@@ -82,35 +110,20 @@
       }
       const { data } = await sb.auth.getSession()
       if (data.session?.user) {
-        auth.user = data.session.user
-        await ensureMember(data.session.user)
-        await loadWorkspace()
-        await refreshUnreadCount()
+        stashSession(data.session)
+        await onSignedIn(data.session.user)
       }
       auth.sessionReady = true
-      const { data: sub } = sb.auth.onAuthStateChange(async (_event, session) => {
-        auth.user = session?.user ?? null
-        if (session?.user) {
-          await ensureMember(session.user)
-          await loadWorkspace()
-          await refreshUnreadCount()
-        } else {
-          auth.member = null
-          unsubscribeRoom()
-          ws.projects = []
-          ws.archivedProjects = []
-          ws.rooms = []
-          ws.members = []
-          ws.docs = []
-          ws.files = []
-          ws.tasks = []
-          ws.templates = []
-          ws.reminders = []
-          ws.currentProjectId = null
-          ws.currentRoomId = null
-          notif.notifications = []
-          notif.unreadCount = 0
-        }
+      const { data: sub } = sb.auth.onAuthStateChange((event, session) => {
+        // handleAuthEvent never throws for auth-state reasons; guard the
+        // listener anyway so a workspace-load hiccup cannot break the
+        // auth subscription.
+        handleAuthEvent(event, session, {
+          getSession: () => sb.auth.getSession(),
+          refreshSession: (opts) => sb.auth.refreshSession(opts),
+          onSignedIn,
+          onSignedOut
+        }).catch(() => {})
       })
       authSub = sub
     })()

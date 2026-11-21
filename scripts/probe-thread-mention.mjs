@@ -22,8 +22,14 @@ import { execFileSync } from 'node:child_process'
 import {
   parseMentions,
   filterMentionSuggestions,
-  renderMentionSegments
+  renderMentionSegments,
+  mentionNames
 } from '../src/lib/mentions.js'
+import {
+  handleAuthEvent,
+  stashSession,
+  clearStashedSession
+} from '../src/lib/auth-events.js'
 
 const PLACEHOLDER_KEY = 'sb_publishable_PLACEHOLDER-NOT-A-REAL-KEY'
 const BASE_URL = 'https://probe-ref.supabase.co'
@@ -52,8 +58,11 @@ function makeDb() {
   const now = new Date().toISOString()
   return {
     members: [
-      { id: ZAHRA_ID, muse_id: 'auth:' + ZAHRA_USER_ID, name: 'زهرا', avatar: null, joined_at: now, auth_id: ZAHRA_USER_ID },
-      { id: SARA_ID, muse_id: 'auth:' + SARA_USER_ID, name: 'سارا', avatar: null, joined_at: now, auth_id: SARA_USER_ID }
+      // Live shape after the G2 migration: display name + stable
+      // username (email local part). The old live bug was that `name`
+      // itself was the username, so «@زهرا» matched nothing.
+      { id: ZAHRA_ID, muse_id: 'auth:' + ZAHRA_USER_ID, name: 'زهرا', username: 'zahraariapour97', avatar: null, joined_at: now, auth_id: ZAHRA_USER_ID },
+      { id: SARA_ID, muse_id: 'auth:' + SARA_USER_ID, name: 'سارا', username: 'sara97', avatar: null, joined_at: now, auth_id: SARA_USER_ID }
     ],
     projects: [
       { id: PROJECT_ID, workspace_id: 'main', name: 'پروژهٔ پروب ترد', description: null, color: null, icon: null, created_by: MEMBER_ID, created_at: now, visibility: 'team', archived: false, custom_fields: { goal: 'هدف', deadline: now, stage: 'created', member_ids: [MEMBER_ID, ZAHRA_ID, SARA_ID] } }
@@ -78,6 +87,15 @@ function makeDb() {
 
 function makeStub(db) {
   let failNotifications = false
+  // Token-refresh behaviour for the session-stability checks:
+  // 'ok' mints a fresh session (rotation), 'revoked' rejects with
+  // invalid_grant (a genuine sign-out revoked the token server-side).
+  let tokenMode = 'ok'
+  let refreshCount = 0
+  // Pre-migration schema simulation: POST/PATCH on members that carry a
+  // `username` field fail with PGRST204 (the column does not exist yet).
+  // ensureMember must fall back to the old shape instead of breaking.
+  let rejectUsername = false
   function rowMatches(row, params) {
     for (const [key, val] of params.entries()) {
       if (['select', 'order', 'limit', 'offset', 'or'].includes(key)) continue
@@ -130,6 +148,9 @@ function makeStub(db) {
         return json({ message: 'simulated notification insert failure', code: '42501' }, 400)
       }
       const body = bodyText ? JSON.parse(bodyText) : {}
+      if (table === 'members' && rejectUsername && 'username' in body) {
+        return json({ message: "Could not find the 'username' column of 'members' in the schema cache", code: 'PGRST204' }, 400)
+      }
       const onConflict = params.get('on_conflict') || params.get('onConflict')
       const now = new Date().toISOString()
       const row = { ...body }
@@ -154,6 +175,9 @@ function makeStub(db) {
     }
     if (method === 'PATCH') {
       const body = bodyText ? JSON.parse(bodyText) : {}
+      if (table === 'members' && rejectUsername && 'username' in body) {
+        return json({ message: "Could not find the 'username' column of 'members' in the schema cache", code: 'PGRST204' }, 400)
+      }
       const matched = rows.filter((r) => rowMatches(r, params))
       for (const r of matched) Object.assign(r, body)
       if (single) return matched.length === 1 ? json(matched[0]) : json({ message: 'JSON object requested, multiple (or no) rows returned' }, 406)
@@ -176,6 +200,21 @@ function makeStub(db) {
     const rawBody = init.body || (typeof input !== 'string' && input.body) || null
     const bodyText = typeof rawBody === 'string' ? rawBody : null
     if (url.startsWith(BASE_URL + '/rest/v1/')) return handleRest(url, method, headers, bodyText)
+    if (url.startsWith(BASE_URL + '/auth/v1/token')) {
+      // Refresh-token grant: the session-stability checks drive this.
+      // The fake refresh token encodes its user id after the colon.
+      if (tokenMode === 'revoked') {
+        return json({ error: 'invalid_grant', error_description: 'Invalid Refresh Token: Already Used' }, 400)
+      }
+      const body = bodyText ? JSON.parse(bodyText) : {}
+      const token = String(body.refresh_token || '')
+      const userId = token.includes(':') ? token.split(':').pop() : USER_ID
+      const email = userId === ZAHRA_USER_ID ? 'zahra@probe.test' : userId === SARA_USER_ID ? 'sara@probe.test' : 'yasin@probe.test'
+      refreshCount++
+      const fresh = fakeSession(userId, email)
+      fresh.refresh_token = 'fake-refresh-token-r' + refreshCount + ':' + userId
+      return json(fresh)
+    }
     if (url.startsWith(BASE_URL + '/auth/v1/')) return json({})
     return json({ error: 'stub: unknown url ' + url }, 404)
   }
@@ -184,6 +223,12 @@ function makeStub(db) {
     db,
     setFailNotifications(v) {
       failNotifications = v
+    },
+    setTokenMode(v) {
+      tokenMode = v
+    },
+    setRejectUsername(v) {
+      rejectUsername = v
     }
   }
 }
@@ -196,7 +241,9 @@ function fakeSession(userId = USER_ID, email = 'yasin@probe.test') {
     b64url({ sub: userId, email, aud: 'authenticated', exp: 9999999999 }) + '.sig'
   return {
     access_token: jwt,
-    refresh_token: 'fake-refresh-token',
+    // The refresh token encodes its user id (after the colon) so the
+    // stub's /auth/v1/token handler can mint a session for the right user.
+    refresh_token: 'fake-refresh-token:' + userId,
     expires_in: 3600,
     expires_at: Math.floor(Date.now() / 1000) + 3600,
     token_type: 'bearer',
@@ -322,10 +369,11 @@ async function sendChat(w, text) {
 
 // ---------- main ----------
 async function main() {
+  // Live shape after the G2 migration: display name + username.
   const members = [
-    { id: MEMBER_ID, name: 'yasin' },
-    { id: ZAHRA_ID, name: 'زهرا' },
-    { id: SARA_ID, name: 'سارا' }
+    { id: MEMBER_ID, name: 'yasin', username: 'yasin' },
+    { id: ZAHRA_ID, name: 'زهرا', username: 'zahraariapour97' },
+    { id: SARA_ID, name: 'سارا', username: 'sara97' }
   ]
 
   // ---- pure mention helpers (oracle) ----
@@ -343,6 +391,97 @@ async function main() {
   check('pure: filterMentionSuggestions closed by a space returns none', filterMentionSuggestions('@زهرا ', 6, members).length === 0)
   const segs = renderMentionSegments('سلام @زهرا و @سارا', members)
   check('pure: render segments mark both mentions', segs.filter((s) => s.mentionId).length === 2 && segs.some((s) => s.text === '@زهرا'))
+
+  // ---- G2 live fix: mention by display name AND by username ----
+  // Live, members.name used to BE the username (ensureMember wrote the
+  // email local part), so «@زهرا» matched nothing while «@zahra»
+  // matched — the old probe seeded display names only and could not
+  // see the difference. The helpers now match on both names.
+  check('pure: mentionNames lists display name then username',
+    JSON.stringify(mentionNames(members[1])) === JSON.stringify(['زهرا', 'zahraariapour97']) &&
+    JSON.stringify(mentionNames(members[0])) === JSON.stringify(['yasin']))
+  check('pure: «@زهرا» suggests Zahra by display name',
+    JSON.stringify(filterMentionSuggestions('@زهرا', 5, members).map((m) => m.id)) === JSON.stringify([ZAHRA_ID]))
+  check('pure: «@zahra» suggests the same Zahra by username',
+    JSON.stringify(filterMentionSuggestions('@zahra', 6, members).map((m) => m.id)) === JSON.stringify([ZAHRA_ID]))
+  check('pure: «@zahraariapour97» suggests Zahra by full username',
+    JSON.stringify(filterMentionSuggestions('@zahraariapour97', 16, members).map((m) => m.id)) === JSON.stringify([ZAHRA_ID]))
+  check('pure: username match is case-insensitive («@ZAHRA»)',
+    JSON.stringify(filterMentionSuggestions('@ZAHRA', 6, members).map((m) => m.id)) === JSON.stringify([ZAHRA_ID]))
+  check('pure: member without a username still matches by display name',
+    JSON.stringify(filterMentionSuggestions('@سا', 3, [{ id: 'x', name: 'سارا' }]).map((m) => m.id)) === JSON.stringify(['x']))
+  check('pure: parseMentions resolves a username token',
+    JSON.stringify(parseMentions('@zahraariapour97 سلام', members)) === JSON.stringify([ZAHRA_ID]))
+  check('pure: display name + username of the same member dedupe to one mention',
+    JSON.stringify(parseMentions('@زهرا و @zahraariapour97 سلام', members)) === JSON.stringify([ZAHRA_ID]))
+  check('pure: render segments highlight a username token',
+    renderMentionSegments('سلام @zahraariapour97', members).some((s) => s.mentionId === ZAHRA_ID && s.text === '@zahraariapour97'))
+
+  // ---- G2 live fix: session stability (pure handler checks) ----
+  // The old App handler wiped everything on ANY null session. These
+  // drive handleAuthEvent with fakes: transient nulls must keep the
+  // user, a foreign SIGNED_OUT must not wipe a session that is still
+  // in storage, and a wiped-storage SIGNED_OUT recovers only while
+  // the server session is alive (refresh succeeds) — never after a
+  // genuine sign-out (refresh fails, stash cleared).
+  {
+    const user = { id: USER_ID, email: 'yasin@probe.test' }
+    const session = { user, refresh_token: 'tok-1' }
+    function fakeDeps({ storedSession = null, refresh = null } = {}) {
+      const calls = { signedIn: [], signedOut: 0, refreshCalls: [] }
+      return {
+        calls,
+        deps: {
+          getSession: async () => ({ data: { session: storedSession } }),
+          refreshSession: async (opts) => {
+            calls.refreshCalls.push(opts)
+            return refresh || { data: { session: null }, error: new Error('invalid_grant') }
+          },
+          onSignedIn: async (u) => { calls.signedIn.push(u.id) },
+          onSignedOut: async () => { calls.signedOut++ }
+        }
+      }
+    }
+    clearStashedSession()
+    let f = fakeDeps({ storedSession: session })
+    check('session: transient TOKEN_REFRESHED(null) restores the stored session',
+      (await handleAuthEvent('TOKEN_REFRESHED', null, f.deps)) === 'signed-in' && f.calls.signedIn.length === 1 && f.calls.signedOut === 0)
+    clearStashedSession()
+    f = fakeDeps({ storedSession: null })
+    check('session: transient TOKEN_REFRESHED(null) with empty storage keeps the user',
+      (await handleAuthEvent('TOKEN_REFRESHED', null, f.deps)) === 'kept' && f.calls.signedOut === 0 && f.calls.refreshCalls.length === 0)
+    clearStashedSession()
+    f = fakeDeps({ storedSession: null })
+    check('session: transient INITIAL_SESSION(null) keeps the user',
+      (await handleAuthEvent('INITIAL_SESSION', null, f.deps)) === 'kept' && f.calls.signedOut === 0)
+    clearStashedSession()
+    f = fakeDeps({ storedSession: session })
+    check('session: foreign SIGNED_OUT does not wipe a session still in storage',
+      (await handleAuthEvent('SIGNED_OUT', null, f.deps)) === 'signed-in' && f.calls.signedIn.length === 1 && f.calls.signedOut === 0 && f.calls.refreshCalls.length === 0)
+    // Stash a token via a signed-in event, then wipe storage.
+    clearStashedSession()
+    f = fakeDeps({ storedSession: null, refresh: { data: { session: { user, refresh_token: 'tok-2' } }, error: null } })
+    await handleAuthEvent('SIGNED_IN', session, f.deps)
+    check('session: wiped-storage SIGNED_OUT recovers with the stashed token',
+      (await handleAuthEvent('SIGNED_OUT', null, f.deps)) === 'signed-in' &&
+      f.calls.refreshCalls.length === 1 && f.calls.refreshCalls[0].refresh_token === 'tok-1' &&
+      f.calls.signedOut === 0)
+    clearStashedSession()
+    f = fakeDeps({ storedSession: null, refresh: { data: { session: null }, error: new Error('invalid_grant') } })
+    await handleAuthEvent('SIGNED_IN', session, f.deps)
+    check('session: wiped-storage SIGNED_OUT with a revoked token wipes',
+      (await handleAuthEvent('SIGNED_OUT', null, f.deps)) === 'signed-out' && f.calls.signedOut === 1)
+    check('session: after a real wipe the stash is gone (no second refresh)',
+      (await handleAuthEvent('SIGNED_OUT', null, f.deps)) === 'signed-out' && f.calls.refreshCalls.length === 1)
+    clearStashedSession()
+    // Explicit signOut clears the stash, so a later SIGNED_OUT cannot recover.
+    stashSession(session)
+    clearStashedSession()
+    f = fakeDeps({ storedSession: null, refresh: { data: { session }, error: null } })
+    check('session: cleared stash never recovers (explicit sign-out stays out)',
+      (await handleAuthEvent('SIGNED_OUT', null, f.deps)) === 'signed-out' && f.calls.refreshCalls.length === 0 && f.calls.signedOut === 1)
+    clearStashedSession()
+  }
 
   buildProbeBundle()
   const { html, js, jsFile } = loadBundle()
@@ -419,6 +558,15 @@ async function main() {
   sugBtn.click()
   await sleep(300)
   check('mention: picking the suggestion inserts «@زهرا »', chatInput(w).value === '@زهرا ', JSON.stringify(chatInput(w).value))
+
+  // ---- G2 live fix at mount level: the username prefix must suggest
+  // the same person (shown by display name). Live, «@zahra» suggested
+  // «@zahraariapour97» while «@زهرا» suggested nothing.
+  setInput(w, chatInput(w), '@zahra')
+  await sleep(300)
+  check('mention: typing @zahra suggests Zahra (by username, shown as @زهرا)',
+    !!w.document.querySelector('[data-mention-list]') && w.document.querySelector('[data-mention-list]').textContent.includes('@زهرا'),
+    norm(w.document.querySelector('[data-mention-list]')?.textContent || ''))
 
   // ---- mention 2 members in one message ----
   await sendChat(w, '@زهرا و @سارا سلام')
@@ -526,6 +674,76 @@ async function main() {
   await sleep(400)
   check('list: unread badge disappears after mark-all-read', !w2.document.querySelector('[data-unread-badge]'))
   m2.dom.window.close()
+
+  // ---- mount 3: session stability (yasin on home) ----
+  // The G2 live test saw the session bounce to the login page 4 times
+  // shortly after login. The old handler wiped everything on ANY null
+  // session; the new one (auth-events.js) keeps the user on transient
+  // nulls, verifies a SIGNED_OUT against storage, and recovers a
+  // wiped-storage session from the stashed refresh token. These checks
+  // drive the REAL client through its BroadcastChannel (a foreign tab)
+  // and localStorage, the way a stale tab would.
+  const STORAGE_KEY = 'sb-probe-ref-auth-token'
+  const m3 = await mountApp({ html, js }, stub, '#/')
+  const w3 = m3.w
+  allErrors.push(...m3.errors)
+  await waitFor(w3, () => w3.document.body.textContent.includes('پروژهٔ پروب ترد'), 10000, 'workspace renders signed-in')
+  const signedIn3 = () =>
+    w3.document.body.textContent.includes('پروژهٔ پروب ترد') &&
+    !w3.document.body.textContent.includes('ورود به فضای کاری')
+  check('session: workspace renders signed-in', signedIn3())
+  const bc = new BroadcastChannel(STORAGE_KEY)
+  bc.onmessage = () => {}
+  const postAuth = (event) => bc.postMessage({ event, session: null })
+  // 1. Transient null on TOKEN_REFRESHED must not log out.
+  postAuth('TOKEN_REFRESHED')
+  await sleep(600)
+  check('session: TOKEN_REFRESHED(null) does not return to the login page', signedIn3())
+  // 2. Foreign SIGNED_OUT with storage intact must not log out.
+  postAuth('SIGNED_OUT')
+  await sleep(600)
+  check('session: foreign SIGNED_OUT with storage intact keeps the user', signedIn3())
+  // 3. Wiped storage + SIGNED_OUT recovers via the stashed refresh token.
+  const storedBefore = JSON.parse(w3.localStorage.getItem(STORAGE_KEY) || 'null')
+  stub.setTokenMode('ok')
+  w3.localStorage.removeItem(STORAGE_KEY)
+  postAuth('SIGNED_OUT')
+  await waitFor(w3, () => {
+    const raw = w3.localStorage.getItem(STORAGE_KEY)
+    if (!raw) return false
+    try {
+      return JSON.parse(raw).refresh_token !== storedBefore.refresh_token
+    } catch {
+      return false
+    }
+  }, 10000, 'session recovered after wiped-storage SIGNED_OUT')
+  check('session: wiped-storage SIGNED_OUT recovers (rotated tokens in storage)', signedIn3())
+  // 4. Genuine sign-out (revoked token) still logs out.
+  stub.setTokenMode('revoked')
+  w3.localStorage.removeItem(STORAGE_KEY)
+  postAuth('SIGNED_OUT')
+  await waitFor(w3, () => w3.document.body.textContent.includes('ورود به فضای کاری'), 10000, 'login page after genuine sign-out')
+  check('session: genuine sign-out still shows the login page', true)
+  bc.close()
+  m3.dom.window.close()
+
+  // ---- mount 4: rollout safety — pre-migration schema ----
+  // Before files/g2-members-username.sql runs, the members table has no
+  // `username` column. ensureMember must still sign the user in (old
+  // shape, name only) instead of failing the insert.
+  const db4 = makeDb()
+  const stub4 = makeStub(db4)
+  stub4.setRejectUsername(true)
+  const m4 = await mountApp({ html, js }, stub4, '#/room/' + ROOM_ID)
+  const w4 = m4.w
+  allErrors.push(...m4.errors)
+  await waitFor(w4, () => chatInput(w4), 10000, 'chat composer on pre-migration schema')
+  const yasinRow4 = db4.members.find((m) => m.auth_id === USER_ID)
+  check('rollout: sign-in works before the username migration (member row created)',
+    !!yasinRow4 && yasinRow4.name === 'yasin', JSON.stringify(yasinRow4))
+  check('rollout: pre-migration row carries no username field',
+    !!yasinRow4 && !('username' in yasinRow4), JSON.stringify(yasinRow4))
+  m4.dom.window.close()
 
   // ---- JS errors ----
   const realErrors = allErrors.filter((e) => !/websocket|realtime/i.test(e))

@@ -1,5 +1,14 @@
 import { sb } from './supabase.js'
-import { auth } from './store.svelte.js'
+import { auth, ws } from './store.svelte.js'
+import {
+  stashSession,
+  clearStashedSession,
+  handleAuthEvent
+} from './auth-events.js'
+
+// The App's onAuthStateChange handler lives in auth-events.js (no
+// imports, so the probe can drive it directly); re-exported here.
+export { handleAuthEvent, stashSession, clearStashedSession }
 
 // ---------- signup validation (proven in the W0 probe page) ----------
 // Reserved/unroutable domains are rejected client-side with a message that
@@ -53,21 +62,85 @@ export function authErrorMessage(where, err) {
 // One-shot guard: called from both the sign-in button and onAuthStateChange.
 let ensureRunning = false
 
+// The members row. Two rules that the old upsert broke:
+// 1. `name` is the DISPLAY name and is NEVER overwritten here. The old
+//    code upserted name = email local part on every login, so any
+//    display name (set in the dashboard or in the app) reverted to the
+//    username at the next login — that is why live «@زهرا» matched
+//    nothing while the sandbox probe (which seeded display names)
+//    passed. Now: read the row first; keep the stored name.
+// 2. `username` is the stable login handle (email local part), written
+//    on insert and backfilled on first sight of an old row. The column
+//    comes from the G2 migration (files/g2-members-username.sql); until
+//    it runs, the insert/update fall back to the old shape (no username)
+//    so the code works with the pre-migration schema too.
 export async function ensureMember(user) {
   if (!sb || !user) return null
   if (auth.member && auth.member.muse_id === 'auth:' + user.id) return auth.member
   if (ensureRunning) return null
   ensureRunning = true
   try {
-    const name = (user.email || 'user').split('@')[0]
-    const { data, error } = await sb
+    const username = (user.email || 'user').split('@')[0]
+    // Display name: Auth user_metadata first (dashboard-created accounts
+    // can carry full_name/name), else the username.
+    const displayName =
+      user.user_metadata?.full_name || user.user_metadata?.name || username
+    const { data: existing } = await sb
       .from('members')
-      .upsert(
-        { muse_id: 'auth:' + user.id, name, auth_id: user.id },
-        { onConflict: 'auth_id' }
-      )
-      .select()
+      .select('*')
+      .eq('auth_id', user.id)
       .single()
+    if (existing) {
+      if (!existing.username) {
+        // Old row: backfill the username, keep the stored display name.
+        const { data } = await sb
+          .from('members')
+          .update({ username })
+          .eq('id', existing.id)
+          .select()
+          .single()
+        auth.member = data || existing
+      } else {
+        auth.member = existing
+      }
+      auth.memberError = null
+      return auth.member
+    }
+    const row = {
+      muse_id: 'auth:' + user.id,
+      name: displayName,
+      auth_id: user.id,
+      username
+    }
+    let { data, error } = await sb.from('members').insert(row).select().single()
+    if (error) {
+      if (isMissingUsernameColumnError(error)) {
+        // Pre-migration schema: retry without the username field.
+        const retry = await sb
+          .from('members')
+          .insert({
+            muse_id: 'auth:' + user.id,
+            name: displayName,
+            auth_id: user.id
+          })
+          .select()
+          .single()
+        data = retry.data
+        error = retry.error
+      } else if (error.code === '23505') {
+        // Lost a race with another tab's insert: re-read the row.
+        const { data: raced } = await sb
+          .from('members')
+          .select('*')
+          .eq('auth_id', user.id)
+          .single()
+        if (raced) {
+          auth.member = raced
+          auth.memberError = null
+          return raced
+        }
+      }
+    }
     if (error) throw error
     auth.member = data
     auth.memberError = null
@@ -80,10 +153,38 @@ export async function ensureMember(user) {
   }
 }
 
+// PostgREST "column does not exist" for `username` (PGRST204): the G2
+// migration has not run yet on this project.
+export function isMissingUsernameColumnError(err) {
+  const m = (err && (err.message || '')) + ' ' + (err && err.code ? String(err.code) : '')
+  return /username/.test(m) && (/PGRST204/.test(m) || /Could not find the .username. column/i.test(m))
+}
+
+// The signed-in member's display name, edited in the app (MembersView).
+// RLS allows updating only one's own row (w1 members update own).
+export async function updateDisplayName(name) {
+  if (!sb || !auth.member) throw new Error('ردیف عضو هنوز ساخته نشده است.')
+  const clean = (name || '').trim()
+  if (!clean) throw new Error('نام نمایشی را بنویسید.')
+  if (clean.length > 80) throw new Error('نام نمایشی خیلی طولانی است.')
+  const { data, error } = await sb
+    .from('members')
+    .update({ name: clean })
+    .eq('id', auth.member.id)
+    .select()
+    .single()
+  if (error) throw error
+  auth.member = data
+  const i = ws.members.findIndex((m) => m.id === data.id)
+  if (i >= 0) ws.members[i] = data
+  return data
+}
+
 export async function signIn(email, password) {
   const { data, error } = await sb.auth.signInWithPassword({ email, password })
   if (error) return { ok: false, ...authErrorMessage('ورود', error) }
   auth.user = data.user
+  stashSession(data.session)
   await ensureMember(data.user)
   return { ok: true, text: 'ورود انجام شد.', kind: 'ok' }
 }
@@ -95,6 +196,7 @@ export async function signUp(email, password) {
   if (error) return { ok: false, ...authErrorMessage('ثبت‌نام', error) }
   if (data.session && data.user) {
     auth.user = data.user
+    stashSession(data.session)
     await ensureMember(data.user)
     return { ok: true, text: 'ثبت‌نام و ورود انجام شد.', kind: 'ok' }
   }
@@ -106,6 +208,9 @@ export async function signUp(email, password) {
 }
 
 export async function signOut() {
+  // Clear the stashed refresh token FIRST: a deliberate sign-out must
+  // never be "recovered" by the SIGNED_OUT handler's stashed-token path.
+  clearStashedSession()
   if (sb) await sb.auth.signOut()
   auth.user = null
   auth.member = null
