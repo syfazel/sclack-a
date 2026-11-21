@@ -6,6 +6,58 @@
 
 export const TASK_STATUSES = ['todo', 'doing', 'done']
 
+// ---------- P01 block A: full project cycle ----------
+// Project stage lives ONLY in projects.custom_fields.stage (no new
+// column — step-4 model: strict core + custom_fields bag). Exactly one
+// of these five values; a new project starts at 'created'; closing
+// (A5) sets 'closed'.
+export const PROJECT_STAGES = ['created', 'planned', 'active', 'review', 'closed']
+
+export const PROJECT_STAGE_LABEL = {
+  created: 'ساخته‌شده',
+  planned: 'برنامه‌ریزی‌شده',
+  active: 'در حال اجرا',
+  review: 'در بازبینی',
+  closed: 'بسته‌شده'
+}
+
+// Project creation form validation (A1): name, goal and deadline are
+// required. Returns a clear Persian message, or null when valid.
+// final_output and description are optional; stage is fixed to
+// 'created' at creation. Pure: the sandbox probe runs it unchanged.
+export function validateProjectForm({ name, goal, deadline }) {
+  if (!String(name || '').trim()) return 'نام پروژه را بنویسید.'
+  if (!String(goal || '').trim()) return 'هدف پروژه را بنویسید.'
+  if (!String(deadline || '').trim()) return 'مهلت پروژه را انتخاب کنید.'
+  return null
+}
+
+// Project review numbers (A4), computed ONLY from real rows — never
+// hardcoded or guessed. `now` is a Date (the caller passes it so the
+// probe can pin the clock). Overdue = due_at past and status != done.
+// "New files" = uploaded in the last 7 days (window stated in the UI).
+export function computeProjectReview({ tasks, docs, files }, now = new Date()) {
+  const list = tasks || []
+  const nowMs = now instanceof Date ? now.getTime() : new Date(now).getTime()
+  const weekAgoMs = nowMs - 7 * 24 * 60 * 60 * 1000
+  let todo = 0
+  let doing = 0
+  let done = 0
+  let overdue = 0
+  for (const t of list) {
+    if (t.status === 'done') done++
+    else if (t.status === 'doing') doing++
+    else todo++
+    if (t.status !== 'done' && t.due_at && new Date(t.due_at).getTime() < nowMs) overdue++
+  }
+  const newFiles = (files || []).filter((f) => {
+    if (!f.uploaded_at) return false
+    const ms = new Date(f.uploaded_at).getTime()
+    return ms >= weekAgoMs && ms <= nowMs
+  }).length
+  return { todo, doing, done, overdue, docs: (docs || []).length, newFiles }
+}
+
 export const TASK_STATUS_LABEL = {
   todo: 'باز',
   doing: 'در حال انجام',

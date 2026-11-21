@@ -1,13 +1,9 @@
 <script>
   import { auth, ws, chat } from '../lib/store.svelte.js'
-  import { createProject, loadProjectData } from '../lib/data.js'
+  import { loadProjectData } from '../lib/data.js'
   import { createDoc } from '../lib/docs.js'
   import { signOut, validateChangePassword, changePassword } from '../lib/auth.js'
   import SearchBox from './SearchBox.svelte'
-
-  let newProjectName = $state('')
-  let createError = $state('')
-  let creating = $state(false)
 
   let newDocTitle = $state('')
   let docError = $state('')
@@ -85,20 +81,6 @@
     }
   }
 
-  async function doCreateProject() {
-    if (creating) return
-    creating = true
-    createError = ''
-    try {
-      const { room } = await createProject(newProjectName)
-      newProjectName = ''
-      location.hash = '#/room/' + room.id
-    } catch (e) {
-      createError = e.message || String(e)
-    } finally {
-      creating = false
-    }
-  }
 </script>
 
 <aside class="flex h-full w-64 flex-col gap-4 overflow-y-auto bg-base-200 p-4">
@@ -160,22 +142,12 @@
         {/each}
       </ul>
     {/if}
-    <div class="mt-2 flex gap-2">
-      <input
-        class="input input-sm input-bordered input-sclack min-w-0 flex-1 bg-base-100"
-        placeholder="نام پروژهٔ تازه"
-        bind:value={newProjectName}
-        onkeydown={(e) => {
-          if (e.key === 'Enter') doCreateProject()
-        }}
-      />
-      <button class="btn btn-sclack btn-sm btn-primary" onclick={doCreateProject} disabled={creating}>
-        ساختن
-      </button>
+    <!-- P01 A1: no name-only quick create here — a project is created
+         from the full form on the home page (name, goal and deadline
+         are required), so the sidebar only links to it. -->
+    <div class="mt-2">
+      <a href="#/" class="btn btn-sclack btn-sm btn-primary w-full">ساختن پروژهٔ تازه</a>
     </div>
-    {#if createError}
-      <p class="mt-1 text-xs text-error">{createError}</p>
-    {/if}
   </section>
 
   <section>

@@ -131,14 +131,18 @@ export async function createDocWithText(projectId, title, text) {
 
 // One-tap create from a template. Doc templates make a doc in the current
 // project; the project template makes a project (with its auto room + auto
-// doc) and fills the auto doc with the meeting skeleton.
-export async function createFromTemplate(template, { projectId, projectName }) {
+// doc) and fills the auto doc with the meeting skeleton. A project
+// template also goes through the P01 form rule: goal and deadline are
+// required (createProject validates them).
+export async function createFromTemplate(template, { projectId, projectName, projectGoal, projectDeadline }) {
   if (!template) throw new Error('قالب مشخص نیست.')
   const kind = template.structure?.kind || template.type
   if (kind === 'project') {
-    const name = (projectName || '').trim()
-    if (!name) throw new Error('نام پروژهٔ تازه را بنویسید.')
-    const { project, room, doc } = await createProject(name)
+    const { project, room, doc } = await createProject({
+      name: projectName,
+      goal: projectGoal,
+      deadline: projectDeadline
+    })
     const skeleton = template.structure?.skeleton || ''
     if (skeleton && doc) {
       const ydoc = new Y.Doc()

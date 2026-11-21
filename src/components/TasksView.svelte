@@ -27,6 +27,8 @@
 
   // --- templates ---
   let projectTemplateName = $state('')
+  let projectTemplateGoal = $state('')
+  let projectTemplateDeadline = $state('')
   let templateMsg = $state('')
   let templateBusy = $state(false)
   let seeding = $state(false)
@@ -155,10 +157,18 @@
     try {
       const res = await createFromTemplate(t, {
         projectId: ws.currentProjectId,
-        projectName: projectTemplateName
+        projectName: projectTemplateName,
+        // P01 A1: a project template also goes through the form rule —
+        // goal and deadline are required.
+        projectGoal: projectTemplateGoal,
+        projectDeadline: projectTemplateDeadline
+          ? new Date(projectTemplateDeadline + 'T23:59:00').toISOString()
+          : ''
       })
       if (res.project) {
         projectTemplateName = ''
+        projectTemplateGoal = ''
+        projectTemplateDeadline = ''
         templateMsg = 'پروژهٔ «' + res.project.name + '» ساخته شد.'
         location.hash = '#/room/' + res.room.id
       } else if (res.doc) {
@@ -317,6 +327,10 @@
                     سررسید {fmtDate(t.due_at)}
                     {#if isDue(t)}<span class="font-bold text-error"> · سررسید گذشته</span>{/if}
                     ·
+                  {:else}
+                    <!-- P01 A2: a task without due_at is creatable but never
+                         appears in the planner menus; it carries this label. -->
+                    بدون تاریخ ·
                   {/if}
                   {#if t.completed_at}تمام‌شده در {fmtDateTime(t.completed_at)} · {/if}
                   ساختهٔ {memberName(t.created_by)}
@@ -366,6 +380,21 @@
                     bind:value={projectTemplateName}
                     disabled={templateBusy}
                   />
+                  <input
+                    class="input input-bordered input-sclack w-full bg-base-100"
+                    placeholder="هدف پروژه *"
+                    bind:value={projectTemplateGoal}
+                    disabled={templateBusy}
+                  />
+                  <label class="form-control w-full">
+                    <span class="label-text mb-1">مهلت *</span>
+                    <input
+                      type="date"
+                      class="input input-bordered input-sclack w-full bg-base-100"
+                      bind:value={projectTemplateDeadline}
+                      disabled={templateBusy}
+                    />
+                  </label>
                 {/if}
                 <button
                   class="btn btn-sclack btn-primary"

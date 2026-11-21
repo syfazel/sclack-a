@@ -93,6 +93,7 @@
           auth.member = null
           unsubscribeRoom()
           ws.projects = []
+          ws.archivedProjects = []
           ws.rooms = []
           ws.members = []
           ws.docs = []

@@ -11,6 +11,7 @@ export const auth = $state({
 
 export const ws = $state({
   projects: [],
+  archivedProjects: [], // P01 A5: closed projects (archived = true)
   rooms: [],
   members: [],
   docs: [],
