@@ -130,6 +130,8 @@
   let remBusy = $state(false)
 
   let taskErrorById = $state({})
+  // Two-tap delete arm, same pattern as file delete (G1 fix).
+  let armDeleteTaskId = $state(null)
   // P01 B4: one task's file section open at a time.
   let openFilesTaskId = $state(null)
 
@@ -216,9 +218,19 @@
   }
 
   async function doDeleteTask(task) {
-    if (!confirm('این کار حذف شود؟')) return
+    // Two-tap in-app confirm, same pattern as file delete (G1 fix):
+    // native confirm() is gone — first tap arms, second tap deletes.
+    // A delete that matches 0 rows now throws in deleteTask, so the
+    // error shows under the row instead of failing silently.
+    if (armDeleteTaskId !== task.id) {
+      armDeleteTaskId = task.id
+      return
+    }
+    armDeleteTaskId = null
     try {
       await deleteTask(task)
+      const { [task.id]: _gone, ...rest } = taskErrorById
+      taskErrorById = rest
     } catch (e) {
       taskErrorById = { ...taskErrorById, [task.id]: e.message || String(e) }
     }
@@ -316,11 +328,11 @@
           </span>
           {#if auth.member && t.created_by === auth.member.id}
             <button
-              class="btn btn-ghost btn-sm text-error"
+              class="btn btn-ghost btn-sm {armDeleteTaskId === t.id ? 'btn-error' : 'text-error'}"
               onclick={() => doDeleteTask(t)}
               title="حذف کار"
             >
-              حذف
+              {armDeleteTaskId === t.id ? 'مطمئنید؟' : 'حذف'}
             </button>
           {/if}
         </div>

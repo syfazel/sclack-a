@@ -87,8 +87,20 @@ export async function cycleTaskStatus(task) {
 }
 
 export async function deleteTask(task) {
-  const { error } = await sb.from('tasks').delete().eq('id', task.id)
+  if (!task?.id) throw new Error('ردیف کار مشخص نیست.')
+  // PostgREST DELETE without .select() answers success even when RLS
+  // blocks the delete (0 rows affected) — that silent no-op was the live
+  // G1 bug (the in-site delete button did nothing, confirmed live twice).
+  // Select the deleted row back and treat "0 rows" as a failure.
+  const { data, error } = await sb
+    .from('tasks')
+    .delete()
+    .eq('id', task.id)
+    .select('id')
   if (error) throw error
+  if (!data || data.length === 0) {
+    throw new Error('کار حذف نشد — یا وجود ندارد یا فقط سازندهٔ آن می‌تواند حذفش کند.')
+  }
   await loadTasks(task.project_id)
 }
 

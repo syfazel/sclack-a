@@ -642,6 +642,71 @@ async function main() {
   check('D2 doc: created row due_at is the suggested due date', !!freshDoc && freshDoc.due_at === suggestDueAt(docQuote, now), JSON.stringify(freshDoc && freshDoc.due_at))
   m.dom.window.close()
 
+  // ---- task delete: two-tap in-app confirm, row really gone (G1 fix) ----
+  // Seed one more task owned by the signed-in member, due today so it
+  // shows in the default «امروز» menu. Two mounts share the same stub
+  // DB: mount B renders the list first, mount A deletes the row, then
+  // B's stale delete button proves the 0-row path shows a clear error
+  // instead of failing silently (the live bug: the button did nothing).
+  db.tasks.push(task('task-deletable', 'کار حذف‌شدنی', MEMBER_ID, isoAt(0, '23:59:00')))
+  const taskRow = (wX, title) =>
+    [...wX.document.querySelectorAll('li.card')].find((li) => li.textContent.includes(title))
+  const taskDeleteBtn = (wX, title) => {
+    const row = taskRow(wX, title)
+    return row ? row.querySelector('button[title="حذف کار"]') : null
+  }
+  const openPlanner = async (wX) => {
+    await waitFor(wX, () => wX.document.body.textContent.includes('پروژهٔ پروب B'), 10000, 'project listed in sidebar')
+    const projBtn = [...wX.document.querySelectorAll('aside button')].find(
+      (b) => b.textContent.trim() === 'پروژهٔ پروب B'
+    )
+    if (!projBtn) throw new Error('project button not found')
+    projBtn.click()
+    await waitFor(wX, () => wX.document.querySelector('[data-planner-header]') || wX.location.hash.startsWith('#/room/'), 10000, 'project selected')
+    wX.location.hash = '#/tasks'
+    wX.dispatchEvent(new wX.Event('hashchange'))
+    await waitFor(wX, () => wX.document.querySelector('[data-planner-header]'), 10000, 'planner header')
+    await waitFor(wX, () => taskRow(wX, 'کار حذف‌شدنی'), 10000, 'deletable task renders')
+  }
+  // Mount B renders first and stays stale on purpose.
+  const mB = await mountApp({ html, js }, stub, '#/')
+  const wB = mB.w
+  allErrors.push(...mB.errors)
+  await openPlanner(wB)
+  check('delete: delete button exists on the own task', !!taskDeleteBtn(wB, 'کار حذف‌شدنی'))
+  check('delete: no native-confirm text in the built bundle', !js.includes('این کار حذف شود؟'))
+  // Mount A deletes the row.
+  const mA = await mountApp({ html, js }, stub, '#/')
+  const wA = mA.w
+  allErrors.push(...mA.errors)
+  await openPlanner(wA)
+  const btnA1 = taskDeleteBtn(wA, 'کار حذف‌شدنی')
+  check('delete: delete button exists in the deleting mount', !!btnA1)
+  btnA1.click()
+  await sleep(300)
+  check('delete: first tap only arms («مطمئنید؟») and deletes nothing',
+    !!taskDeleteBtn(wA, 'کار حذف‌شدنی') && taskDeleteBtn(wA, 'کار حذف‌شدنی').textContent.trim() === 'مطمئنید؟' && db.tasks.some((t) => t.id === 'task-deletable') && !!taskRow(wA, 'کار حذف‌شدنی'))
+  const btnA2 = taskDeleteBtn(wA, 'کار حذف‌شدنی')
+  btnA2.click()
+  await waitFor(wA, () => !db.tasks.some((t) => t.id === 'task-deletable'), 10000, 'row removed from stub DB')
+  check('delete: second tap removes the row from the stub DB', !db.tasks.some((t) => t.id === 'task-deletable'), 'tasks=' + db.tasks.length)
+  await sleep(400)
+  check('delete: the task is gone from the planner list', !taskRow(wA, 'کار حذف‌شدنی'))
+  mA.dom.window.close()
+  // Mount B's stale button now deletes a row that is already gone:
+  // deleteTask must throw a clear error instead of staying silent.
+  const btnB1 = taskDeleteBtn(wB, 'کار حذف‌شدنی')
+  check('delete: stale row is still listed in the other mount', !!btnB1)
+  btnB1.click()
+  await sleep(300)
+  const btnB2 = taskDeleteBtn(wB, 'کار حذف‌شدنی')
+  check('delete: stale first tap arms too', !!btnB2 && btnB2.textContent.trim() === 'مطمئنید؟')
+  btnB2.click()
+  await waitFor(wB, () => wB.document.body.textContent.includes('کار حذف نشد'), 10000, 'clear delete error shows')
+  check('delete: stale delete shows a clear error, not silence', wB.document.body.textContent.includes('کار حذف نشد'))
+  check('delete: the failed delete leaves the DB untouched', db.tasks.length === 7, 'tasks=' + db.tasks.length)
+  mB.dom.window.close()
+
   // ---- D1 empty: a project with no tasks -> found: false, honest text ----
   const db2 = makeDb()
   seedProject(db2, { yjsDocId: 'doc-p01-d-2' })
