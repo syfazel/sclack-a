@@ -1,10 +1,11 @@
 <script>
   import { onMount } from 'svelte'
-  import { auth, ws } from './lib/store.svelte.js'
+  import { auth, ws, notif } from './lib/store.svelte.js'
   import { sb, isConfigured } from './lib/supabase.js'
   import { ensureMember } from './lib/auth.js'
   import { loadWorkspace, loadProjectData } from './lib/data.js'
   import { unsubscribeRoom } from './lib/chat.js'
+  import { refreshUnreadCount } from './lib/notifications.js'
   import Login from './components/Login.svelte'
   import Sidebar from './components/Sidebar.svelte'
   import HomeView from './components/HomeView.svelte'
@@ -14,6 +15,7 @@
   import TasksView from './components/TasksView.svelte'
   import AssistantView from './components/AssistantView.svelte'
   import MembersView from './components/MembersView.svelte'
+  import NotificationsView from './components/NotificationsView.svelte'
 
   let hash = $state(typeof location !== 'undefined' ? location.hash || '#/' : '#/')
 
@@ -24,6 +26,7 @@
     if (h === '/tasks') return { name: 'tasks' }
     if (h === '/assistant') return { name: 'assistant' }
     if (h === '/members') return { name: 'members' }
+    if (h === '/notifications') return { name: 'notifications' }
     const m = h.match(/^\/room\/(.+)$/)
     if (m) return { name: 'room', roomId: m[1] }
     const d = h.match(/^\/doc\/(.+)$/)
@@ -82,6 +85,7 @@
         auth.user = data.session.user
         await ensureMember(data.session.user)
         await loadWorkspace()
+        await refreshUnreadCount()
       }
       auth.sessionReady = true
       const { data: sub } = sb.auth.onAuthStateChange(async (_event, session) => {
@@ -89,6 +93,7 @@
         if (session?.user) {
           await ensureMember(session.user)
           await loadWorkspace()
+          await refreshUnreadCount()
         } else {
           auth.member = null
           unsubscribeRoom()
@@ -103,6 +108,8 @@
           ws.reminders = []
           ws.currentProjectId = null
           ws.currentRoomId = null
+          notif.notifications = []
+          notif.unreadCount = 0
         }
       })
       authSub = sub
@@ -141,6 +148,8 @@
         <AssistantView />
       {:else if route.name === 'members'}
         <MembersView />
+      {:else if route.name === 'notifications'}
+        <NotificationsView />
       {/if}
     </main>
   </div>

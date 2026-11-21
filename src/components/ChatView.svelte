@@ -2,17 +2,37 @@
   import { auth, ws, chat } from '../lib/store.svelte.js'
   import { memberName } from '../lib/data.js'
   import { loadMessages, subscribeRoom, unsubscribeRoom, sendTyping, sendMessage } from '../lib/chat.js'
+  import { filterMentionSuggestions, renderMentionSegments } from '../lib/mentions.js'
   import FileList from './FileList.svelte'
 
   let { roomId } = $props()
   let draft = $state('')
   let scrollBox = $state(null)
+  let inputEl = $state(null)
   let stickToBottom = $state(true)
   let showRoomFiles = $state(false)
+
+  // Thread (one level): replying to a reply takes the same top parent.
+  let replyTo = $state(null) // { id, parent_id, author_id, body } | null
+  const replyParentId = $derived(
+    replyTo ? replyTo.parent_id || replyTo.id : null
+  )
+
+  // Mention autocomplete: open while the caret sits after an '@' that
+  // has no space after it yet.
+  let mentionCaret = $state(0)
+  const mentionSuggestions = $derived(
+    filterMentionSuggestions(draft, mentionCaret, ws.members)
+  )
+  const mentionOpen = $derived(
+    mentionSuggestions.length > 0 && draft.includes('@')
+  )
 
   const room = $derived(ws.rooms.find((r) => r.id === roomId))
   const onlineNames = $derived(chat.presence.map((p) => p.name).join('، '))
   const typingNames = $derived(chat.typing.map((t) => t.name).join('، '))
+  const topMessages = $derived(chat.messages.filter((m) => !m.parent_id))
+  const repliesOf = (id) => chat.messages.filter((m) => m.parent_id === id)
 
   function fmtTime(iso) {
     try {
@@ -32,6 +52,8 @@
     const id = roomId
     chat.messages = []
     chat.sendState = ''
+    replyTo = null
+    draft = ''
     loadMessages(id)
     subscribeRoom(id)
     return () => unsubscribeRoom()
@@ -44,9 +66,50 @@
     if (stickToBottom && scrollBox) scrollBox.scrollTop = scrollBox.scrollHeight
   })
 
+  function onDraftInput(e) {
+    mentionCaret = e.target.selectionStart ?? draft.length
+    sendTyping()
+  }
+
+  function pickMention(member) {
+    if (!inputEl) return
+    const caret = inputEl.selectionStart ?? draft.length
+    const upto = draft.slice(0, caret)
+    const at = upto.lastIndexOf('@')
+    if (at < 0) return
+    draft = draft.slice(0, at) + '@' + member.name + ' ' + draft.slice(caret)
+    mentionCaret = at + member.name.length + 2
+    inputEl.focus()
+    // Put the caret right after the inserted token.
+    requestAnimationFrame(() => {
+      inputEl.setSelectionRange(mentionCaret, mentionCaret)
+    })
+  }
+
+  function onComposerKeydown(e) {
+    if (e.key === 'Escape') {
+      if (replyTo) replyTo = null
+      return
+    }
+    if (e.key === 'Enter' && mentionOpen) {
+      e.preventDefault()
+      pickMention(mentionSuggestions[0])
+      return
+    }
+    if (e.key === 'Enter') doSend()
+  }
+
+  function startReply(m) {
+    replyTo = m
+    if (inputEl) inputEl.focus()
+  }
+
   async function doSend() {
-    const ok = await sendMessage(roomId, draft, room?.type)
-    if (ok) draft = ''
+    const ok = await sendMessage(roomId, draft, room?.type, { parentId: replyParentId })
+    if (ok) {
+      draft = ''
+      replyTo = null
+    }
   }
 </script>
 
@@ -74,22 +137,56 @@
         <p class="mt-1 text-sm opacity-60">اولین پیام این اتاق را بنویسید.</p>
       </div>
     {:else}
-      <ul class="flex flex-col gap-2">
-        {#each chat.messages as m (m.id)}
+      <div class="flex flex-col gap-3">
+        {#each topMessages as m (m.id)}
           {@const mine = auth.member && m.author_id === auth.member.id}
-          <li class="flex {mine ? 'justify-start' : 'justify-end'}">
-            <div
-              class="max-w-[80%] rounded-2xl px-3 py-2 shadow-sm {mine ? 'msg-mine' : 'msg-other'}"
-            >
-              <div class="mb-0.5 flex items-baseline gap-2 text-xs opacity-70">
-                <span class="font-medium">{memberName(m.author_id)}</span>
-                <span>{fmtTime(m.created_at)}</span>
+          {@const replies = repliesOf(m.id)}
+          <div>
+            <div class="flex {mine ? 'justify-start' : 'justify-end'}">
+              <div
+                class="max-w-[80%] rounded-2xl px-3 py-2 shadow-sm {mine ? 'msg-mine' : 'msg-other'}"
+              >
+                <div class="mb-0.5 flex items-baseline gap-2 text-xs opacity-70">
+                  <span class="font-medium">{memberName(m.author_id)}</span>
+                  <span>{fmtTime(m.created_at)}</span>
+                </div>
+                <p class="whitespace-pre-wrap break-words text-sm leading-6">{#each renderMentionSegments(m.body, ws.members) as seg}{#if seg.mentionId}<span class="msg-mention">{seg.text}</span>{:else}{seg.text}{/if}{/each}</p>
+                <div class="mt-1 flex items-center gap-2">
+                  <button class="btn btn-ghost btn-xs" onclick={() => startReply(m)}>
+                    پاسخ
+                  </button>
+                  {#if replies.length > 0}
+                    <span class="text-xs opacity-60">{replies.length} پاسخ</span>
+                  {/if}
+                </div>
               </div>
-              <p class="whitespace-pre-wrap break-words text-sm leading-6">{m.body}</p>
             </div>
-          </li>
+            {#if replies.length > 0}
+              <ul class="mt-2 flex flex-col gap-2 border-s-2 border-amber-500/60 ps-3">
+                {#each replies as r (r.id)}
+                  {@const rmine = auth.member && r.author_id === auth.member.id}
+                  <li class="flex {rmine ? 'justify-start' : 'justify-end'}">
+                    <div
+                      class="max-w-[85%] rounded-2xl px-3 py-2 shadow-sm {rmine ? 'msg-mine' : 'msg-other'}"
+                    >
+                      <div class="mb-0.5 flex items-baseline gap-2 text-xs opacity-70">
+                        <span class="font-medium">{memberName(r.author_id)}</span>
+                        <span>{fmtTime(r.created_at)}</span>
+                      </div>
+                      <p class="whitespace-pre-wrap break-words text-sm leading-6">{#each renderMentionSegments(r.body, ws.members) as seg}{#if seg.mentionId}<span class="msg-mention">{seg.text}</span>{:else}{seg.text}{/if}{/each}</p>
+                      <div class="mt-1">
+                        <button class="btn btn-ghost btn-xs" onclick={() => startReply(r)}>
+                          پاسخ
+                        </button>
+                      </div>
+                    </div>
+                  </li>
+                {/each}
+              </ul>
+            {/if}
+          </div>
         {/each}
-      </ul>
+      </div>
     {/if}
   </div>
 
@@ -107,15 +204,37 @@
         <FileList projectId={room.project_id} attachedTo={{ type: 'room', id: room.id }} />
       </div>
     {/if}
+    {#if replyTo}
+      <div class="mb-2 flex items-center gap-2 rounded-xl bg-base-200 px-3 py-2 text-sm">
+        <span class="min-w-0 flex-1 truncate">
+          پاسخ به {memberName(replyTo.author_id)}: «{(replyTo.body || '').slice(0, 80)}»
+        </span>
+        <button class="btn btn-ghost btn-xs shrink-0" onclick={() => (replyTo = null)}>
+          لغو
+        </button>
+      </div>
+    {/if}
+    {#if mentionOpen}
+      <div class="mb-2 flex flex-col gap-1 rounded-xl bg-base-200 px-2 py-2" data-mention-list>
+        {#each mentionSuggestions as member (member.id)}
+          <button
+            class="btn btn-ghost btn-sm w-full justify-start"
+            onclick={() => pickMention(member)}
+          >
+            @{member.name}
+          </button>
+        {/each}
+        <p class="px-2 text-xs opacity-50">Enter انتخاب می‌کند؛ Esc می‌بندد.</p>
+      </div>
+    {/if}
     <div class="flex gap-2">
       <input
         class="input input-bordered input-sclack min-w-0 flex-1 bg-base-200"
         placeholder="پیام بنویسید…"
         bind:value={draft}
-        oninput={sendTyping}
-        onkeydown={(e) => {
-          if (e.key === 'Enter') doSend()
-        }}
+        bind:this={inputEl}
+        oninput={onDraftInput}
+        onkeydown={onComposerKeydown}
       />
       <!-- The send button is never disabled: every click explains itself. -->
       <button class="btn btn-send btn-primary shrink-0 px-5" onclick={doSend}>فرستادن</button>

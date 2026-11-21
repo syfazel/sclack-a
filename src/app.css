@@ -65,6 +65,15 @@ body {
   background: #ffffff;
 }
 
+/* منشن در متن پیام — برجستگی کهربایی (پالت گرم مرحلهٔ ۵) */
+.msg-mention {
+  background: #fef3c7;
+  color: #92400e;
+  border-radius: 6px;
+  padding: 0 3px;
+  font-weight: 600;
+}
+
 /* اکسنت بنفش دستیار میوز — فقط داخل پنل دستیار استفاده می‌شود، هیچ‌جای دیگر سایت بنفش نیست */
 :root {
   --ai-accent: #7c3aed;

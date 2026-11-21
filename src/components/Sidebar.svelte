@@ -1,5 +1,5 @@
 <script>
-  import { auth, ws, chat, displayPrefs } from '../lib/store.svelte.js'
+  import { auth, ws, chat, notif, displayPrefs } from '../lib/store.svelte.js'
   import { loadProjectData } from '../lib/data.js'
   import { createDoc } from '../lib/docs.js'
   import { signOut, validateChangePassword, changePassword } from '../lib/auth.js'
@@ -109,6 +109,12 @@
          was unreachable from the UI. These links cover every width. -->
     <a href="#/tasks" class="btn btn-ghost btn-sm w-full justify-start"> کارها </a>
     <a href="#/members" class="btn btn-ghost btn-sm w-full justify-start"> اعضا </a>
+    <a href="#/notifications" class="btn btn-ghost btn-sm w-full justify-start">
+      اعلان‌ها
+      {#if notif.unreadCount > 0}
+        <span class="badge badge-warning badge-sm" data-unread-badge>{notif.unreadCount}</span>
+      {/if}
+    </a>
   </section>
 
   <section>

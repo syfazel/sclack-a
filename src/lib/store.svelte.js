@@ -33,6 +33,14 @@ export const chat = $state({
   typing: [] // [{ memberId, name }]
 })
 
+// اعلان‌ها — فقط اشاره‌گر (type + target_id)، بدون متن پیام؛ اعلان پوش نیست.
+export const notif = $state({
+  notifications: [], // enriched rows: { ..., message: { author_id, room_id } | null }
+  unreadCount: 0,
+  loading: false,
+  error: ''
+})
+
 // ترجیح‌های نمایشی (بخش ۵ P01): «حالت ساده» شیشه را مات می‌کند و
 // صحنهٔ سه‌بعدی را خاموش می‌کند.
 export const displayPrefs = $state({

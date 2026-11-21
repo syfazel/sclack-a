@@ -1,5 +1,7 @@
 import { sb } from './supabase.js'
-import { auth, chat } from './store.svelte.js'
+import { auth, ws, chat } from './store.svelte.js'
+import { parseMentions } from './mentions.js'
+import { createNotification } from './notifications.js'
 
 // Chat over Supabase + Realtime.
 // Public Realtime access is OFF on the project, so the room channel MUST be
@@ -99,7 +101,16 @@ export function sendTyping() {
 // a message in a project room is project-visible. No DM creation exists
 // in the draft yet (G2), but the derivation is in place so a DM room's
 // messages can never leak into a project.
-export async function sendMessage(roomId, body, roomType) {
+//
+// Thread + mention (0.7.0): options.parentId is the top-level parent
+// message (a reply to a reply takes the same top parent — one level
+// only). mentions[] is parsed from @name tokens against ws.members.
+// The insert uses .select('id').single() so the new message id comes
+// back and the mention / reply notification pointers can point at it.
+// Notifications are pointers only (type + target_id, no message text).
+// If a notification insert fails, the sent message stays and the
+// failure is only reported in sendState — the message is never rolled back.
+export async function sendMessage(roomId, body, roomType, options = {}) {
   const text = (body || '').trim()
   if (!sb) {
     chat.sendState = 'فرستادن ممکن نیست: کلید Supabase هنوز وصل نشده است.'
@@ -123,17 +134,73 @@ export async function sendMessage(roomId, body, roomType) {
     chat.sendState = 'چیزی برای فرستادن نیست — اول پیام را بنویسید.'
     return false
   }
+  const parentId = options.parentId || null
+  const mentions = parseMentions(text, ws.members)
   chat.sendState = 'در حال فرستادن…'
-  const { error } = await sb.from('messages').insert({
-    room_id: roomId,
-    author_id: auth.member.id,
-    body: text,
-    visibility: roomType === 'dm' ? 'personal' : 'project'
-  })
-  if (error) {
-    chat.sendState = 'فرستادن ناموفق بود: ' + error.message
+  const { data, error } = await sb
+    .from('messages')
+    .insert({
+      room_id: roomId,
+      author_id: auth.member.id,
+      body: text,
+      parent_id: parentId,
+      mentions,
+      visibility: roomType === 'dm' ? 'personal' : 'project'
+    })
+    .select('id')
+    .single()
+  if (error || !data?.id) {
+    chat.sendState = 'فرستادن ناموفق بود: ' + (error?.message || 'شناسهٔ پیام برنگشت.')
     return false
   }
-  chat.sendState = ''
+  const messageId = data.id
+  // Local echo: the Realtime INSERT handler dedupes by id, so showing
+  // the message now cannot double it when the broadcast arrives.
+  if (!chat.messages.some((m) => m.id === messageId)) {
+    chat.messages = [
+      ...chat.messages,
+      {
+        id: messageId,
+        room_id: roomId,
+        author_id: auth.member.id,
+        body: text,
+        parent_id: parentId,
+        mentions,
+        visibility: roomType === 'dm' ? 'personal' : 'project',
+        created_at: new Date().toISOString()
+      }
+    ]
+  }
+  // Notification pointers (best effort — never roll back the message).
+  try {
+    const recipients = new Set()
+    for (const id of mentions) {
+      if (id !== auth.member.id) recipients.add(id)
+    }
+    for (const id of recipients) {
+      await createNotification(id, 'mention', messageId)
+    }
+    if (parentId) {
+      let parentAuthor = chat.messages.find((m) => m.id === parentId)?.author_id || null
+      if (!parentAuthor) {
+        try {
+          const { data: parent } = await sb
+            .from('messages')
+            .select('author_id')
+            .eq('id', parentId)
+            .single()
+          parentAuthor = parent?.author_id || null
+        } catch {
+          parentAuthor = null
+        }
+      }
+      if (parentAuthor && parentAuthor !== auth.member.id && !recipients.has(parentAuthor)) {
+        await createNotification(parentAuthor, 'reply', messageId)
+      }
+    }
+    chat.sendState = ''
+  } catch (e) {
+    chat.sendState = 'پیام فرستاده شد، ولی ساخت اعلان ناموفق بود: ' + (e.message || String(e))
+  }
   return true
 }

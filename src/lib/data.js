@@ -3,6 +3,7 @@ import { auth, ws } from './store.svelte.js'
 import { validateProjectForm } from './extract.js'
 import { loadDocs, createAutoDoc, listFiles } from './docs.js'
 import { loadTasks, loadTemplates, loadReminders } from './work.js'
+import { refreshUnreadCount } from './notifications.js'
 
 // Workspace data: projects, rooms, members, docs, files. Reads only what
 // RLS allows the signed-in member to see. No test data is ever written here.
@@ -46,6 +47,10 @@ export async function loadWorkspace() {
   }
   await loadTemplates()
   await loadReminders()
+  // Sidebar unread badge: refresh on every workspace load / login.
+  // refreshUnreadCount never throws (it swallows its own errors), so a
+  // notification read failure cannot break the workspace load.
+  await refreshUnreadCount()
 }
 
 export async function loadRooms(projectId) {
