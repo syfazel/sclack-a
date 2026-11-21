@@ -397,38 +397,46 @@
     </li>
   {/snippet}
 
-  <h1 class="text-2xl font-bold">کارها</h1>
-  <p class="mt-1 text-sm opacity-70">دفتر برنامه‌ریزی — کارها و یادآوری‌های پروژهٔ جاری بر اساس زمان و تاریخ.</p>
+  <!-- G4 — هدر چسبان دفتر: شیشهٔ سبک، فقط کروم -->
+  <div
+    class="glass-chrome sticky top-0 z-10 -mx-4 -mt-6 px-4 pt-6 pb-3 md:-mx-8 md:px-8"
+    data-planner-header
+  >
+    <h1 class="text-2xl font-bold">کارها</h1>
+    <p class="mt-1 text-sm opacity-70">دفتر برنامه‌ریزی — کارها و یادآوری‌های پروژهٔ جاری بر اساس زمان و تاریخ.</p>
 
-  <div class="mt-6">
-    <SearchBox />
+    <div class="mt-6">
+      <SearchBox />
+    </div>
+
+    {#if ws.currentProjectId}
+      <!-- planner menu bar: exactly the 8 menus of P01 C1 -->
+      <div
+        class="mt-6 flex gap-2 overflow-x-auto pb-1"
+        role="tablist"
+        aria-label="منوهای دفتر برنامه‌ریزی"
+      >
+        {#each PLANNER_MENUS as m (m.id)}
+          <button
+            data-menu={m.id}
+            role="tab"
+            aria-selected={plannerMenu === m.id}
+            class="btn btn-sclack shrink-0 {plannerMenu === m.id ? 'btn-primary' : 'btn-outline'}"
+            onclick={() => selectMenu(m.id)}
+          >
+            {m.label}
+            <span class="badge badge-sm {plannerMenu === m.id ? 'badge-neutral' : 'badge-ghost'}">
+              {menuCounts[m.id] ?? 0}
+            </span>
+          </button>
+        {/each}
+      </div>
+    {/if}
   </div>
 
   {#if !ws.currentProjectId}
     <p class="mt-6 text-sm opacity-60">اول یک پروژه بسازید یا انتخاب کنید.</p>
   {:else}
-    <!-- planner menu bar: exactly the 8 menus of P01 C1 -->
-    <div
-      class="mt-6 flex gap-2 overflow-x-auto pb-1"
-      role="tablist"
-      aria-label="منوهای دفتر برنامه‌ریزی"
-    >
-      {#each PLANNER_MENUS as m (m.id)}
-        <button
-          data-menu={m.id}
-          role="tab"
-          aria-selected={plannerMenu === m.id}
-          class="btn btn-sclack shrink-0 {plannerMenu === m.id ? 'btn-primary' : 'btn-outline'}"
-          onclick={() => selectMenu(m.id)}
-        >
-          {m.label}
-          <span class="badge badge-sm {plannerMenu === m.id ? 'badge-neutral' : 'badge-ghost'}">
-            {menuCounts[m.id] ?? 0}
-          </span>
-        </button>
-      {/each}
-    </div>
-
     <!-- create a task from inside the active menu (C3) -->
     <section class="mt-4">
       <h2 class="mb-2 text-lg font-bold">فهرست کار</h2>

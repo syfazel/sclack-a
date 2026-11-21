@@ -13,37 +13,37 @@
 <section class="mt-8">
   <h2 class="mb-2 text-lg font-bold">بازبینی</h2>
   <div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
-    <div class="card bg-base-200">
+    <div class="card glass-card">
       <div class="card-body items-center py-4 text-center">
         <span class="text-2xl font-bold">{review.todo}</span>
         <span class="text-sm opacity-70">کار باز</span>
       </div>
     </div>
-    <div class="card bg-base-200">
+    <div class="card glass-card">
       <div class="card-body items-center py-4 text-center">
         <span class="text-2xl font-bold">{review.doing}</span>
         <span class="text-sm opacity-70">کار در حال انجام</span>
       </div>
     </div>
-    <div class="card bg-base-200">
+    <div class="card glass-card">
       <div class="card-body items-center py-4 text-center">
         <span class="text-2xl font-bold">{review.done}</span>
         <span class="text-sm opacity-70">کار تمام‌شده</span>
       </div>
     </div>
-    <div class="card bg-base-200">
+    <div class="card glass-card">
       <div class="card-body items-center py-4 text-center">
         <span class="text-2xl font-bold {review.overdue > 0 ? 'text-error' : ''}">{review.overdue}</span>
         <span class="text-sm opacity-70">کار عقب‌مانده</span>
       </div>
     </div>
-    <div class="card bg-base-200">
+    <div class="card glass-card">
       <div class="card-body items-center py-4 text-center">
         <span class="text-2xl font-bold">{review.docs}</span>
         <span class="text-sm opacity-70">سند</span>
       </div>
     </div>
-    <div class="card bg-base-200">
+    <div class="card glass-card">
       <div class="card-body items-center py-4 text-center">
         <span class="text-2xl font-bold">{review.newFiles}</span>
         <span class="text-sm opacity-70">فایل تازه (۷ روز اخیر)</span>

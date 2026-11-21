@@ -2,6 +2,7 @@
   import { auth } from '../lib/store.svelte.js'
   import { isConfigured } from '../lib/supabase.js'
   import { signIn, signUp } from '../lib/auth.js'
+  import LogoMark from './LogoMark.svelte'
 
   let email = $state('')
   let password = $state('')
@@ -39,23 +40,25 @@
   }
 </script>
 
-<div class="flex min-h-screen items-center justify-center bg-base-100 px-4 py-10">
-  <div class="card w-full max-w-md bg-base-200 shadow-xl">
+<!-- G1 — ورود/لندینگ: صحنهٔ زندهٔ Three.js پشت کارت شیشه‌ای ورود.
+     HeroScene با import() پویا لود می‌شود (three در باندل اولیه نیست)؛
+     اگر چانک نرسید، مش گرم + لوگو می‌نشیند و صفحه خالی نمی‌ماند. -->
+<div class="relative flex min-h-screen items-center justify-center px-4 py-10">
+  <div class="absolute inset-0">
+    {#await import('./HeroScene.svelte')}
+      <div class="warm-mesh absolute inset-0"></div>
+    {:then { default: HeroScene }}
+      <HeroScene variant="landing" onlineCount={4} />
+    {:catch}
+      <div class="warm-mesh absolute inset-0 flex items-center justify-center">
+        <LogoMark class="h-16 w-32 opacity-90" />
+      </div>
+    {/await}
+  </div>
+  <div class="card glass-card relative z-10 w-full max-w-md shadow-xl">
     <div class="card-body">
       <div class="mb-2 flex items-center gap-3">
-        <svg viewBox="0 0 64 32" class="h-8 w-16" aria-hidden="true">
-          <path
-            d="M8 25 C 20 25, 22 7, 32 7 S 44 25, 56 25"
-            fill="none"
-            stroke="#E8B48A"
-            stroke-width="3"
-            stroke-linecap="round"
-          />
-          <circle cx="8" cy="25" r="5.5" fill="#D97706" />
-          <circle cx="25" cy="11" r="5.5" fill="#E07830" />
-          <circle cx="40" cy="21" r="5.5" fill="#F0705A" />
-          <circle cx="56" cy="25" r="5.5" fill="#F97066" />
-        </svg>
+        <LogoMark class="h-8 w-16" />
         <div>
           <h1 class="text-2xl font-bold">sclack_A</h1>
           <p class="text-sm opacity-70">ورود به فضای کاری</p>

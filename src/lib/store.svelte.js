@@ -32,3 +32,9 @@ export const chat = $state({
   presence: [], // [{ memberId, name }]
   typing: [] // [{ memberId, name }]
 })
+
+// ترجیح‌های نمایشی (بخش ۵ P01): «حالت ساده» شیشه را مات می‌کند و
+// صحنهٔ سه‌بعدی را خاموش می‌کند.
+export const displayPrefs = $state({
+  simple: false
+})

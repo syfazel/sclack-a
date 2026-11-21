@@ -1,8 +1,12 @@
 // Smoke check: mount the built app in jsdom and report JS errors +
 // whether the login form renders.
-// Why window.eval: jsdom does not execute <script type="module">, but the
-// Vite bundle is a self-contained IIFE (no import/export), so evaluating
-// its source in the jsdom window is a genuine mount of the shipped code.
+// Why window.eval: jsdom does not execute <script type="module">, so the
+// bundle source is evaluated in the jsdom window instead. Since S5 the
+// bundle is code-split: Vite's dynamic-import helper uses import.meta
+// (module-only) and Rollup emits a trailing facade export — both are
+// parse errors in a classic script, so the eval'd copy is patched
+// (import.meta -> safe values, facade export stripped). The real
+// browser loads the bundle as a module, where both work.
 // Usage: node scripts/probe-mount.mjs   (run after `npm run build`)
 import { spawn } from 'node:child_process'
 import { JSDOM, VirtualConsole } from 'jsdom'
@@ -51,7 +55,12 @@ try {
   })
   dom.window.addEventListener('error', (e) => errors.push('window.error: ' + (e.message || e)))
   try {
-    dom.window.eval(js)
+    // See the header comment: patch the eval'd copy for code-split bundles.
+    const jsForEval = js
+      .replaceAll('import.meta.resolve', 'void 0')
+      .replaceAll('import.meta.url', "'http://localhost/'")
+      .replace(/export\{[^}]*\};?\s*$/, '')
+    dom.window.eval(jsForEval)
   } catch (e) {
     errors.push('eval threw: ' + (e.message || e))
   }

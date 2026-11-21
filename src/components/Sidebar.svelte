@@ -1,9 +1,11 @@
 <script>
-  import { auth, ws, chat } from '../lib/store.svelte.js'
+  import { auth, ws, chat, displayPrefs } from '../lib/store.svelte.js'
   import { loadProjectData } from '../lib/data.js'
   import { createDoc } from '../lib/docs.js'
   import { signOut, validateChangePassword, changePassword } from '../lib/auth.js'
+  import { toggleSimpleMode } from '../lib/display-prefs.js'
   import SearchBox from './SearchBox.svelte'
+  import LogoMark from './LogoMark.svelte'
 
   let newDocTitle = $state('')
   let docError = $state('')
@@ -83,21 +85,10 @@
 
 </script>
 
-<aside class="flex h-full w-64 flex-col gap-4 overflow-y-auto bg-base-200 p-4">
+<!-- G4 — سایدبار: شیشهٔ سبک، فقط کروم -->
+<aside class="glass-chrome flex h-full w-64 flex-col gap-4 overflow-y-auto p-4" data-sidebar>
   <a href="#/" class="flex items-center gap-2">
-    <svg viewBox="0 0 64 32" class="h-7 w-14" aria-hidden="true">
-      <path
-        d="M8 25 C 20 25, 22 7, 32 7 S 44 25, 56 25"
-        fill="none"
-        stroke="#E8B48A"
-        stroke-width="3"
-        stroke-linecap="round"
-      />
-      <circle cx="8" cy="25" r="5.5" fill="#D97706" />
-      <circle cx="25" cy="11" r="5.5" fill="#E07830" />
-      <circle cx="40" cy="21" r="5.5" fill="#F0705A" />
-      <circle cx="56" cy="25" r="5.5" fill="#F97066" />
-    </svg>
+    <LogoMark class="h-7 w-14" />
     <span class="text-xl font-bold">sclack_A</span>
   </a>
 
@@ -309,7 +300,15 @@
     {#if auth.memberError}
       <p class="mb-2 text-xs text-error">ساخت ردیف عضو ناموفق بود: {auth.memberError}</p>
     {/if}
+    <!-- G8/R3 — «حالت ساده»: شیشه به مات برمی‌گردد و صحنهٔ سه‌بعدی خاموش می‌شود -->
+    <button
+      class="btn btn-sclack btn-ghost btn-sm mb-2 w-full"
+      onclick={toggleSimpleMode}
+      title="شیشه را مات و صحنهٔ سه‌بعدی را خاموش می‌کند"
+    >
+      {displayPrefs.simple ? 'حالت گرافیکی' : 'حالت ساده'}
+    </button>
     <button class="btn btn-sclack btn-outline btn-sm w-full" onclick={signOut}>خروج از حساب</button>
-    <p class="mt-2 text-center text-xs opacity-50">sclack_A — اسکلت + چت + سند و فایل + کار و حافظه + دستیار (D5)</p>
+    <p class="mt-2 text-center text-xs opacity-50">sclack_A — اسکلت + چت + سند و فایل + کار و حافظه + دستیار (D5) + گرافیک (P01 بخش ۵)</p>
   </div>
 </aside>

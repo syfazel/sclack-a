@@ -1,7 +1,12 @@
 <script>
-  import { auth, ws } from '../lib/store.svelte.js'
+  import { auth, ws, chat } from '../lib/store.svelte.js'
   import { createProject, closeProject, loadProjectData } from '../lib/data.js'
-  import { PROJECT_STAGE_LABEL, endOfTehranDay } from '../lib/extract.js'
+  import {
+    PROJECT_STAGE_LABEL,
+    endOfTehranDay,
+    plannerMenuTasks,
+    isOverdueTask
+  } from '../lib/extract.js'
   import FileList from './FileList.svelte'
   import ProjectReview from './ProjectReview.svelte'
 
@@ -27,6 +32,16 @@
       projMembers = ws.members.map((m) => m.id)
     }
   })
+
+  // G2 — هیروی خانه: شمار کارهای امروز و عقب‌مانده، فقط از ردیف‌های
+  // واقعی (همان منطق خالص دفتر برنامه‌ریزی).
+  const todayCount = $derived(
+    plannerMenuTasks(ws.tasks, ws.reminders, 'today', {
+      meId: auth.member?.id
+    }).tasks.filter((t) => t.status !== 'done').length
+  )
+  const overdueCount = $derived(ws.tasks.filter((t) => isOverdueTask(t)).length)
+  const onlineCount = $derived(Math.max(1, chat.presence.length))
 
   function memberNames(ids) {
     if (!ids || ids.length === 0) return ''
@@ -107,8 +122,36 @@
 </script>
 
 <div class="h-full overflow-y-auto px-4 py-6 md:px-8">
-  <h1 class="text-2xl font-bold">سلام{auth.member ? ' ' + auth.member.name : ''}</h1>
-  <p class="mt-1 text-sm opacity-70">به فضای کاری sclack_A خوش آمدید.</p>
+  <!-- G2 — هیروی خانه: «سلام + کارهای امروز»؛ صحنهٔ آرام (سبک، کند)
+       پشت کارت شیشه‌ای. حرکت نباید خواندن کارهای امروز را بگیرد. -->
+  <section class="relative overflow-hidden rounded-3xl" data-home-hero>
+    <div class="relative h-60">
+      {#await import('./HeroScene.svelte')}
+        <div class="warm-mesh absolute inset-0"></div>
+      {:then { default: HeroScene }}
+        <HeroScene variant="home" onlineCount={onlineCount} />
+      {:catch}
+        <div class="warm-mesh absolute inset-0"></div>
+      {/await}
+      <div class="absolute inset-0 flex items-center p-5">
+        <div class="glass-card px-5 py-4">
+          <h1 class="text-2xl font-bold">سلام{auth.member ? ' ' + auth.member.name : ''}</h1>
+          <p class="mt-2 flex items-baseline gap-4 text-sm">
+            <span>
+              <span class="text-2xl font-bold">{todayCount}</span> کار امروز
+            </span>
+            <span>
+              <span class="text-2xl font-bold {overdueCount > 0 ? 'text-error' : ''}">
+                {overdueCount}
+              </span>
+              عقب‌مانده
+            </span>
+          </p>
+          <p class="mt-1 text-xs opacity-70">به فضای کاری sclack_A خوش آمدید.</p>
+        </div>
+      </div>
+    </div>
+  </section>
 
   {#if ws.error}
     <div class="alert alert-error mt-4"><span>{ws.error}</span></div>
@@ -197,7 +240,8 @@
     {:else}
       <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {#each ws.projects as p (p.id)}
-          <div class="card bg-base-200 shadow-sm transition hover:shadow-md">
+          <!-- G5 — کارت پروژه: شیشهٔ کم‌عمق + انیمیشن ورود (فقط transform/opacity) -->
+          <div class="card glass-card anim-enter shadow-sm transition hover:shadow-md">
             <div class="card-body gap-1">
               <button class="text-start" onclick={() => openProject(p)}>
                 <h3 class="card-title text-base">{p.name}</h3>
@@ -246,7 +290,7 @@
       <h2 class="mb-2 text-lg font-bold">بایگانی‌شده</h2>
       <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {#each ws.archivedProjects as p (p.id)}
-          <div class="card bg-base-200 opacity-80 shadow-sm">
+          <div class="card glass-card opacity-80 shadow-sm">
             <div class="card-body gap-1">
               <button class="text-start" onclick={() => openProject(p)}>
                 <h3 class="card-title text-base">{p.name}</h3>

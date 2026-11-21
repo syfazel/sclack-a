@@ -145,8 +145,8 @@
     </main>
   </div>
 
-  <!-- Mobile bottom nav (4 destinations, touch targets ≥ 44px) -->
-  <nav class="fixed inset-x-0 bottom-0 z-10 flex border-t border-base-300 bg-base-200 md:hidden">
+  <!-- Mobile bottom nav (4 destinations, touch targets ≥ 44px) — G4: کروم شیشه‌ای -->
+  <nav class="glass-chrome fixed inset-x-0 bottom-0 z-10 flex md:hidden">
     <a
       href="#/"
       class="flex min-h-11 flex-1 flex-col items-center justify-center py-2 text-xs {route.name ===

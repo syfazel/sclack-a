@@ -422,7 +422,15 @@ async function mountApp({ html, js }, stub, hash, session = fakeSession()) {
   w.localStorage.setItem('sb-probe-ref-auth-token', JSON.stringify(session))
   w.addEventListener('error', (e) => errors.push('window.error: ' + (e.message || e)))
   try {
-    w.eval(js)
+    // S5 made the bundle code-split: Vite's dynamic-import helper uses
+    // import.meta (module-only) and Rollup emits a trailing facade
+    // export — both are parse errors in a classic script. Patch the
+    // eval'd copy only; the real browser loads the bundle as a module.
+    const jsForEval = js
+      .replaceAll('import.meta.resolve', 'void 0')
+      .replaceAll('import.meta.url', "'http://localhost/'")
+      .replace(/export\{[^}]*\};?\s*$/, '')
+    w.eval(jsForEval)
   } catch (e) {
     errors.push('eval threw: ' + (e.message || e))
   }
