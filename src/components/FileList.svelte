@@ -10,10 +10,11 @@
     MAX_FILE_SIZE
   } from '../lib/docs.js'
 
-  // props: projectId (required), attachedTo {type:'room'|'doc', id} or null.
-  // When attachedTo is set, the upload attaches the file to that room/doc;
-  // the list still shows the whole project's files.
-  let { projectId, attachedTo = null } = $props()
+  // props: projectId (required), attachedTo {type:'room'|'doc'|'task', id} or null.
+  // When attachedTo is set, the upload attaches the file to that room/doc/task;
+  // the list still shows the whole project's files — unless filterAttached
+  // is true (P01 B4: a task's file section shows only that task's files).
+  let { projectId, attachedTo = null, filterAttached = false } = $props()
 
   let fileInput = $state(null)
   let uploadMsg = $state('')
@@ -25,9 +26,24 @@
   // first tap arms the button and the second tap deletes.
   let armDeleteId = $state(null)
 
-  const files = $derived(ws.files.filter((f) => f.project_id === projectId))
+  const files = $derived(
+    filterAttached && attachedTo
+      ? ws.files.filter(
+          (f) =>
+            f.project_id === projectId &&
+            f.attached_to_type === attachedTo.type &&
+            f.attached_to_id === attachedTo.id
+        )
+      : ws.files.filter((f) => f.project_id === projectId)
+  )
   // RLS allows delete only for the uploader (w1 files delete own).
   const canDelete = (f) => auth.member && f.uploaded_by === auth.member.id
+  function attachLabel(type) {
+    if (type === 'doc') return 'سند'
+    if (type === 'room') return 'اتاق'
+    if (type === 'task') return 'کار'
+    return ''
+  }
 
   async function doUpload(event) {
     const file = event.target.files?.[0]
@@ -110,7 +126,9 @@
     فایل‌ها {attachedTo
       ? attachedTo.type === 'doc'
         ? '(پیوست به این سند)'
-        : '(پیوست به این اتاق)'
+        : attachedTo.type === 'room'
+          ? '(پیوست به این اتاق)'
+          : '(پیوست به این کار)'
       : ''}
   </h3>
   <div class="flex flex-wrap items-center gap-2">
@@ -154,7 +172,7 @@
           <span class="text-xs opacity-60">{fmtTime(f.uploaded_at)}</span>
           {#if f.attached_to_type}
             <span class="rounded-full bg-base-200 px-2 py-0.5 text-xs opacity-70">
-              {f.attached_to_type === 'doc' ? 'سند' : 'اتاق'}
+              {attachLabel(f.attached_to_type)}
             </span>
           {/if}
           <button

@@ -38,8 +38,14 @@
   let commentBusy = $state(false)
   let showResolved = $state(false)
 
-  const openComments = $derived(comments.filter((c) => !c.resolved))
-  const resolvedComments = $derived(comments.filter((c) => c.resolved))
+  // P01 B3: one-level threading — a reply's parent_id points at a
+  // top-level comment; replies render nested under it and have no reply
+  // button of their own.
+  let replyTo = $state(null)
+  const openCount = $derived(comments.filter((c) => !c.resolved).length)
+  const topOpen = $derived(comments.filter((c) => !c.parent_id && !c.resolved))
+  const topResolved = $derived(comments.filter((c) => !c.parent_id && c.resolved))
+  const repliesOf = (id) => comments.filter((c) => c.parent_id === id)
 
   function refreshPresence() {
     if (!bc) return
@@ -217,9 +223,10 @@
       if (textarea && textarea.selectionStart !== textarea.selectionEnd) {
         anchor = makeAnchor(ytext, ydoc, textarea.selectionStart, textarea.selectionEnd)
       }
-      const row = await addComment(docRow.id, commentDraft, anchor)
+      const row = await addComment(docRow.id, commentDraft, anchor, replyTo?.id)
       comments = [...comments, row]
       commentDraft = ''
+      replyTo = null
     } catch (e) {
       commentError = e.message || String(e)
     } finally {
@@ -326,8 +333,55 @@
     <aside
       class="w-full shrink-0 border-t border-base-300 bg-base-200 px-4 py-4 md:w-80 md:overflow-y-auto md:border-t-0 md:border-s"
     >
-      <h2 class="mb-2 text-sm font-bold opacity-70">نظرها ({openComments.length} باز)</h2>
+      {#snippet commentCard(c, nested)}
+        <li
+          class="rounded-xl bg-base-100 px-3 py-2 shadow-sm {nested
+            ? 'ms-4 border-s-2 border-base-300'
+            : ''} {c.resolved ? 'opacity-70' : ''}"
+        >
+          <div class="mb-0.5 flex items-baseline gap-2 text-xs opacity-70">
+            <span class="font-medium">{memberName(c.author_id)}</span>
+            <span>{fmtTime(c.created_at)}</span>
+          </div>
+          {#if c.anchor?.quote}
+            <p class="mb-1 rounded bg-base-200 px-2 py-1 text-xs opacity-80">
+              «{c.anchor.quote}»
+            </p>
+          {/if}
+          <p class="whitespace-pre-wrap break-words text-sm leading-6">{c.body}</p>
+          <div class="mt-2 flex flex-wrap gap-2">
+            {#if c.anchor?.quote}
+              <button class="btn btn-ghost btn-xs" onclick={() => goToAnchor(c)}>
+                رفتن به محل
+              </button>
+            {/if}
+            {#if !nested}
+              <button class="btn btn-ghost btn-xs" onclick={() => (replyTo = c)}>
+                پاسخ
+              </button>
+            {/if}
+            <button class="btn btn-ghost btn-xs" onclick={() => doResolve(c, !c.resolved)}>
+              {c.resolved ? 'باز کردن دوباره' : 'حل‌شده'}
+            </button>
+          </div>
+          {#if !nested}
+            <ul class="mt-2 flex flex-col gap-2">
+              {#each repliesOf(c.id) as r (r.id)}
+                {@render commentCard(r, true)}
+              {/each}
+            </ul>
+          {/if}
+        </li>
+      {/snippet}
+
+      <h2 class="mb-2 text-sm font-bold opacity-70">نظرها ({openCount} باز)</h2>
       <div class="flex flex-col gap-2">
+        {#if replyTo}
+          <p class="rounded bg-base-100 px-2 py-1 text-xs opacity-80">
+            پاسخ به {memberName(replyTo.author_id)}: «{(replyTo.body || '').slice(0, 60)}»
+            <button class="btn btn-ghost btn-xs" onclick={() => (replyTo = null)}>لغو</button>
+          </p>
+        {/if}
         <textarea
           class="textarea textarea-bordered w-full bg-base-100"
           rows="2"
@@ -338,64 +392,29 @@
           <p class="text-xs text-error">{commentError}</p>
         {/if}
         <button class="btn btn-sclack btn-primary" onclick={doAddComment} disabled={commentBusy}>
-          {commentBusy ? '…' : 'ثبت نظر'}
+          {commentBusy ? '…' : replyTo ? 'ثبت پاسخ' : 'ثبت نظر'}
         </button>
       </div>
 
       <ul class="mt-4 flex flex-col gap-2">
-        {#each openComments as c (c.id)}
-          <li class="rounded-xl bg-base-100 px-3 py-2 shadow-sm">
-            <div class="mb-0.5 flex items-baseline gap-2 text-xs opacity-70">
-              <span class="font-medium">{memberName(c.author_id)}</span>
-              <span>{fmtTime(c.created_at)}</span>
-            </div>
-            {#if c.anchor?.quote}
-              <p class="mb-1 rounded bg-base-200 px-2 py-1 text-xs opacity-80">
-                «{c.anchor.quote}»
-              </p>
-            {/if}
-            <p class="whitespace-pre-wrap break-words text-sm leading-6">{c.body}</p>
-            <div class="mt-2 flex gap-2">
-              {#if c.anchor?.quote}
-                <button class="btn btn-ghost btn-xs" onclick={() => goToAnchor(c)}>
-                  رفتن به محل
-                </button>
-              {/if}
-              <button class="btn btn-ghost btn-xs" onclick={() => doResolve(c, true)}>
-                حل‌شده
-              </button>
-            </div>
-          </li>
+        {#each topOpen as c (c.id)}
+          {@render commentCard(c, false)}
         {:else}
           <li class="text-sm opacity-50">هنوز نظری نیست.</li>
         {/each}
       </ul>
 
-      {#if resolvedComments.length > 0}
+      {#if topResolved.length > 0}
         <button
           class="btn btn-ghost btn-xs mt-4"
           onclick={() => (showResolved = !showResolved)}
         >
-          {showResolved ? 'پنهان کردن' : 'نمایش'} نظرهای حل‌شده ({resolvedComments.length})
+          {showResolved ? 'پنهان کردن' : 'نمایش'} نظرهای حل‌شده ({topResolved.length})
         </button>
         {#if showResolved}
           <ul class="mt-2 flex flex-col gap-2">
-            {#each resolvedComments as c (c.id)}
-              <li class="rounded-xl bg-base-100 px-3 py-2 opacity-70 shadow-sm">
-                <div class="mb-0.5 flex items-baseline gap-2 text-xs opacity-70">
-                  <span class="font-medium">{memberName(c.author_id)}</span>
-                  <span>{fmtTime(c.created_at)}</span>
-                </div>
-                {#if c.anchor?.quote}
-                  <p class="mb-1 rounded bg-base-200 px-2 py-1 text-xs opacity-80">
-                    «{c.anchor.quote}»
-                  </p>
-                {/if}
-                <p class="whitespace-pre-wrap break-words text-sm leading-6">{c.body}</p>
-                <button class="btn btn-ghost btn-xs mt-2" onclick={() => doResolve(c, false)}>
-                  باز کردن دوباره
-                </button>
-              </li>
+            {#each topResolved as c (c.id)}
+              {@render commentCard(c, false)}
             {/each}
           </ul>
         {/if}

@@ -116,7 +116,15 @@ export function connectBroadcast(doc, yjsDocId, localUser) {
 
   bc.onmessage = (event) => {
     const data = event.data
-    if (!(data instanceof Uint8Array)) return
+    // Cross-realm-safe Uint8Array check: `instanceof Uint8Array` fails
+    // when the message was structured-cloned from another realm (jsdom /
+    // Node BroadcastChannel, iframes, workers) even though the bytes ARE
+    // a Uint8Array — the P01-B probe measured 0/50 instanceof-true and
+    // 50/50 '[object Uint8Array]' on the app's own live traffic, so the
+    // old guard silently dropped every live message in jsdom. The
+    // toString tag reads the internal class and works across realms; in
+    // a real browser the data is a same-realm Uint8Array either way.
+    if (Object.prototype.toString.call(data) !== '[object Uint8Array]') return
     const decoder = decoding.createDecoder(data)
     const type = decoding.readVarUint(decoder)
     if (type === MSG_SYNC) {

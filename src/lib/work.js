@@ -395,13 +395,27 @@ export async function saveVersion(docRow, ydoc, note) {
   return data
 }
 
-// Restore = apply the snapshot to the live doc, save the row (via the
-// caller's saveNow, which owns lastSavedB64), then record a NEW version
-// of the restored state. Returns the new version row.
+// Restore = REPLACE the live text with the snapshot's text, save the row
+// (via the caller's saveNow, which owns lastSavedB64), then record a NEW
+// version of the restored state. Returns the new version row.
+// NOTE (P01 B3): merely applying the snapshot (applyDocState) only
+// MERGES — Yjs updates are monotonic, so an old snapshot can never remove
+// newer text and the doc would keep the newer content. A restore must
+// delete the current text and insert the snapshot's text; that is a
+// normal Yjs update (origin 'version'), so live peers receive it too,
+// the textarea updates via the remote-apply path, and the debounced save
+// is NOT scheduled by it (saveNow below owns the write).
 export async function restoreVersion(docRow, ydoc, versionRow, saveNow) {
-  if (!applyDocState(ydoc, versionRow.snapshot_ref, 'version')) {
+  const snapDoc = new Y.Doc()
+  if (!applyDocState(snapDoc, versionRow.snapshot_ref, 'version')) {
     throw new Error('اسنپ‌شات این نسخه خوانده نشد.')
   }
+  const snapshotText = snapDoc.getText('content').toString()
+  const ytext = ydoc.getText('content')
+  ydoc.transact(() => {
+    ytext.delete(0, ytext.length)
+    if (snapshotText) ytext.insert(0, snapshotText)
+  }, 'version')
   if (saveNow) await saveNow()
   const fresh = await saveVersion(docRow, ydoc, 'برگردانده‌شده از نسخهٔ ' + versionRow.version_no)
   return fresh

@@ -95,7 +95,11 @@ export function sendTyping() {
 
 // The send button is NEVER disabled (W0 fix A): every click explains itself
 // through chat.sendState instead of staying silent.
-export async function sendMessage(roomId, body) {
+// Visibility (P01 B2): a message in a DM room (type 'dm') is personal;
+// a message in a project room is project-visible. No DM creation exists
+// in the draft yet (G2), but the derivation is in place so a DM room's
+// messages can never leak into a project.
+export async function sendMessage(roomId, body, roomType) {
   const text = (body || '').trim()
   if (!sb) {
     chat.sendState = 'فرستادن ممکن نیست: کلید Supabase هنوز وصل نشده است.'
@@ -124,7 +128,7 @@ export async function sendMessage(roomId, body) {
     room_id: roomId,
     author_id: auth.member.id,
     body: text,
-    visibility: 'project'
+    visibility: roomType === 'dm' ? 'personal' : 'project'
   })
   if (error) {
     chat.sendState = 'فرستادن ناموفق بود: ' + error.message

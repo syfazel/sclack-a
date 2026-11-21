@@ -45,7 +45,7 @@
   })
 
   async function doSend() {
-    const ok = await sendMessage(roomId, draft)
+    const ok = await sendMessage(roomId, draft, room?.type)
     if (ok) draft = ''
   }
 </script>

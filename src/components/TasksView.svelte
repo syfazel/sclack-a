@@ -14,6 +14,7 @@
   } from '../lib/work.js'
   import { TASK_STATUS_LABEL } from '../lib/extract.js'
   import SearchBox from './SearchBox.svelte'
+  import FileList from './FileList.svelte'
 
   // --- task form ---
   let taskTitle = $state('')
@@ -42,6 +43,14 @@
   let remBusy = $state(false)
 
   let taskErrorById = $state({})
+  // P01 B4: one task's file section open at a time.
+  let openFilesTaskId = $state(null)
+
+  function taskFilesCount(t) {
+    return ws.files.filter(
+      (f) => f.attached_to_type === 'task' && f.attached_to_id === t.id
+    ).length
+  }
 
   const linkTargets = $derived.by(() => {
     const rooms = ws.rooms.map((r) => ({ type: 'room', id: r.id, label: 'اتاق: ' + r.name }))
@@ -340,6 +349,25 @@
                     <a href={linkHref(t)} class="link link-primary">{linkLabel(t)}</a>
                   </p>
                 {/if}
+                <div class="mt-1">
+                  <button
+                    class="btn btn-ghost btn-xs"
+                    onclick={() =>
+                      (openFilesTaskId = openFilesTaskId === t.id ? null : t.id)}
+                  >
+                    {openFilesTaskId === t.id ? 'پنهان کردن فایل‌ها' : 'فایل‌ها'}
+                    ({taskFilesCount(t)})
+                  </button>
+                  {#if openFilesTaskId === t.id}
+                    <div class="mt-2 rounded-xl bg-base-100 px-3 py-2">
+                      <FileList
+                        projectId={t.project_id}
+                        attachedTo={{ type: 'task', id: t.id }}
+                        filterAttached
+                      />
+                    </div>
+                  {/if}
+                </div>
                 {#if taskErrorById[t.id]}
                   <p class="text-xs text-error">{taskErrorById[t.id]}</p>
                 {/if}

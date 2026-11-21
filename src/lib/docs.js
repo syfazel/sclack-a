@@ -157,7 +157,7 @@ export async function loadComments(docId) {
   return data || []
 }
 
-export async function addComment(docId, body, anchor) {
+export async function addComment(docId, body, anchor, parentId) {
   const clean = (body || '').trim()
   if (!clean) throw new Error('متن نظر را بنویسید.')
   if (!auth.member) throw new Error('ردیف عضو هنوز ساخته نشده است.')
@@ -169,6 +169,7 @@ export async function addComment(docId, body, anchor) {
       body: clean,
       anchor: anchor || null,
       resolved: false,
+      parent_id: parentId || null,
       visibility: 'project'
     })
     .select()
