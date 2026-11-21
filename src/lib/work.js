@@ -33,7 +33,7 @@ export async function loadTasks(projectId) {
   else ws.error = error.message
 }
 
-export async function createTask({ projectId, title, description, assigneeId, dueAt, linkType, linkId }) {
+export async function createTask({ projectId, title, description, assigneeId, dueAt, linkType, linkId, source }) {
   const clean = (title || '').trim()
   if (!clean) throw new Error('عنوان کار را بنویسید.')
   if (!auth.member) throw new Error('ردیف عضو هنوز ساخته نشده است.')
@@ -50,7 +50,18 @@ export async function createTask({ projectId, title, description, assigneeId, du
       visibility: 'project',
       custom_fields: {
         link_type: linkType || null,
-        link_id: linkId || null
+        link_id: linkId || null,
+        // P01 D2: provenance of a task created from an assistant
+        // suggestion — the verbatim source quote + the id of the message
+        // or doc it came from. Only set when the task comes from a
+        // suggestion; ordinary tasks carry nulls.
+        ...(source
+          ? {
+              source_message_id: source.source_message_id || null,
+              source_doc_id: source.source_doc_id || null,
+              source_quote: source.source_quote || null
+            }
+          : {})
       }
     })
     .select()

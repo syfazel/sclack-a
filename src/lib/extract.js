@@ -403,3 +403,108 @@ export function plannerMenuDefaultDue(menuId, now = new Date(), selectedDayKey =
   if (menuId === 'calendar') return selectedDayKey || tehranDayKey(now)
   return ''
 }
+
+// ---------- P01 block D: Muse AI — deadline guardian + chat-to-task ----------
+// Both features are EXTRACTIVE-ONLY: they quote and point at real rows,
+// never invent content. `now` is passed in so the sandbox probe can pin
+// the clock. The guardian buckets are disjoint and cover unfinished
+// work only (a done task needs no guardian):
+//   overdue = due_at past and status != done (same rule as A4/C2)
+//   today   = due on the Tehran calendar day, not overdue
+//   soon    = due after today, within the next 48 hours
+// Reminders of the signed-in member due today ride along as
+// remindersToday. found is false only when all four lists are empty.
+export function computeDeadlineGuardian(tasks, reminders, now = new Date()) {
+  const n = toDate(now)
+  const nowMs = n.getTime()
+  const todayKey = tehranDayKey(n)
+  const todayEndMs = new Date(endOfTehranDay(todayKey)).getTime()
+  const soonEndMs = nowMs + 48 * 60 * 60 * 1000
+  const today = []
+  const overdue = []
+  const soon = []
+  for (const t of tasks || []) {
+    if (t.status === 'done' || !t.due_at) continue
+    const dueMs = new Date(t.due_at).getTime()
+    if (Number.isNaN(dueMs)) continue
+    if (dueMs < nowMs) overdue.push(t)
+    else if (tehranDayKey(t.due_at) === todayKey) today.push(t)
+    else if (dueMs > todayEndMs && dueMs <= soonEndMs) soon.push(t)
+  }
+  overdue.sort((a, b) => new Date(a.due_at) - new Date(b.due_at))
+  today.sort((a, b) => new Date(a.due_at) - new Date(b.due_at))
+  soon.sort((a, b) => new Date(a.due_at) - new Date(b.due_at))
+  const remindersToday = (reminders || []).filter(
+    (r) => !r.done && r.remind_at && tehranDayKey(r.remind_at) === todayKey
+  )
+  const found =
+    today.length + overdue.length + soon.length + remindersToday.length > 0
+  return { today, overdue, soon, remindersToday, found, generatedAt: n.toISOString() }
+}
+
+// Suggested due date for a chat/doc suggestion. A transparent,
+// documented heuristic — the content (title/quote) is always verbatim;
+// only this default deadline is a suggestion: a line saying «فردا»
+// suggests tomorrow, «امروز» suggests today, anything else suggests
+// the end of the day after tomorrow.
+export function suggestDueAt(line, now = new Date()) {
+  const n = toDate(now)
+  const text = String(line || '')
+  if (text.includes('فردا')) return endOfTehranDay(tehranDayKey(addTehranDays(n, 1)))
+  if (text.includes('امروز')) return endOfTehranDay(tehranDayKey(n))
+  return endOfTehranDay(tehranDayKey(addTehranDays(n, 2)))
+}
+
+// D2: task suggestions from room messages. One suggestion per action
+// line (the same ACTION_MARKERS rule as the doc suggestions). The
+// suggested assignee is the message's author — the person who raised
+// it; the title and quote are the line verbatim; the due date is
+// suggestDueAt's transparent default. source_message_id points at the
+// message row.
+export function extractChatTaskSuggestions(messages, now = new Date(), limit = 8) {
+  const out = []
+  const seen = new Set()
+  for (const m of messages || []) {
+    for (const line of splitLines(m.body)) {
+      if (out.length >= limit) return out
+      if (line.length < 6 || seen.has(line)) continue
+      const listed = /^([-*•·\d]+[.)\]]|\(?\d+[.)])\s/.test(line)
+      const hasVerb = ACTION_MARKERS.some((v) => line.includes(v))
+      if (!listed && !hasVerb) continue
+      seen.add(line)
+      out.push({
+        title: line,
+        assigneeId: m.author_id || null,
+        dueAt: suggestDueAt(line, now),
+        quote: line,
+        source_message_id: m.id || null,
+        source_doc_id: null
+      })
+    }
+  }
+  return out
+}
+
+// D2: the same rule over doc text. A doc line has no per-line author,
+// so the suggested assignee is null — the user picks one when creating.
+export function extractDocTaskSuggestions(text, docId, now = new Date(), limit = 8) {
+  const out = []
+  const seen = new Set()
+  for (const line of splitLines(text)) {
+    if (out.length >= limit) break
+    if (line.length < 6 || seen.has(line)) continue
+    const listed = /^([-*•·\d]+[.)\]]|\(?\d+[.)])\s/.test(line)
+    const hasVerb = ACTION_MARKERS.some((v) => line.includes(v))
+    if (!listed && !hasVerb) continue
+    seen.add(line)
+    out.push({
+      title: line,
+      assigneeId: null,
+      dueAt: suggestDueAt(line, now),
+      quote: line,
+      source_message_id: null,
+      source_doc_id: docId || null
+    })
+  }
+  return out
+}
