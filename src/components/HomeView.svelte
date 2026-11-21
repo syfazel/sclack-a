@@ -1,7 +1,7 @@
 <script>
   import { auth, ws } from '../lib/store.svelte.js'
   import { createProject, closeProject, loadProjectData } from '../lib/data.js'
-  import { PROJECT_STAGE_LABEL } from '../lib/extract.js'
+  import { PROJECT_STAGE_LABEL, endOfTehranDay } from '../lib/extract.js'
   import FileList from './FileList.svelte'
   import ProjectReview from './ProjectReview.svelte'
 
@@ -72,7 +72,7 @@
         description: projDesc,
         goal: projGoal,
         finalOutput: projFinal,
-        deadline: projDeadline ? new Date(projDeadline + 'T23:59:00').toISOString() : '',
+        deadline: projDeadline ? endOfTehranDay(projDeadline) : '',
         memberIds: projMembers || []
       })
       projName = ''

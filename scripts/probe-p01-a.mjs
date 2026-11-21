@@ -384,6 +384,16 @@ function setSelect(w, el, value) {
   el.dispatchEvent(new w.Event('change', { bubbles: true }))
 }
 
+// P01 C: the planner on #/tasks filters by menu — a task is visible only
+// in the menus its due date / assignee puts it in. This helper switches
+// menus by data-menu id (the acceptance criteria are unchanged; only the
+// navigation to reach the rows moved).
+function clickMenu(w, id) {
+  const b = w.document.querySelector(`button[data-menu="${id}"]`)
+  if (!b) throw new Error('menu button not found: ' + id)
+  b.click()
+}
+
 // ---------- main ----------
 async function main() {
   buildProbeBundle()
@@ -487,9 +497,15 @@ async function main() {
   w.dispatchEvent(new w.Event('hashchange'))
   const taskTitle = await waitFor(w, () => w.document.querySelector('input[placeholder="عنوان کار تازه"]'), 10000, 'task title input')
   setInput(w, taskTitle, 'کار پروب بایگانی')
+  // P01 C: the planner prefills the form's due date with today (menu
+  // «امروز»); a no-date task is created by clearing the date first.
+  const taskDueA = w.document.querySelector('section input[type="date"]')
+  if (taskDueA) setInput(w, taskDueA, '')
   ;[...w.document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'ساختن کار').click()
   await waitFor(w, () => db1.tasks.length === 1, 10000, 'task row created')
   check('A2: task without due_at is creatable', db1.tasks[0].due_at === null)
+  // The undated task lives in «سررسیدها», not in «امروز».
+  clickMenu(w, 'due')
   await waitFor(w, () => w.document.body.textContent.includes('بدون تاریخ'), 10000, 'no-date label')
   check('A2: task without due_at shows «بدون تاریخ»', w.document.body.textContent.includes('بدون تاریخ'))
 
@@ -540,6 +556,8 @@ async function main() {
   check('A5: archived project doc still readable', true)
   w.location.hash = '#/tasks'
   w.dispatchEvent(new w.Event('hashchange'))
+  await waitFor(w, () => w.document.querySelector('button[data-menu="due"]'), 10000, 'planner menu bar')
+  clickMenu(w, 'due')
   await waitFor(w, () => w.document.body.textContent.includes('کار پروب بایگانی'), 10000, 'archived project task listed')
   check('A5: archived project tasks still readable', true)
   check('A5: no project row was deleted', db1.projects.length === 1 && db1.docs.length === 1 && db1.tasks.length === 1)
@@ -590,6 +608,11 @@ async function main() {
     const li = [...w.document.querySelectorAll('li')].find((el) => el.textContent.includes(title))
     return li ? li.querySelector('button') : null
   }
+  // P01 C: the 3 tasks (tomorrow / +6d / no date) are not in «امروز»;
+  // switch to «سررسیدها» before cycling their status.
+  await waitFor(w2, () => w2.document.querySelector('button[data-menu="due"]'), 10000, 'planner menu bar')
+  clickMenu(w2, 'due')
+  await sleep(300)
   let b1 = await waitFor(w2, () => statusBtn(w2, 'کار یک'), 10000, 'status button for task 1')
   check('A2: status button starts at «باز»', b1.textContent.trim() === 'باز', b1.textContent.trim())
   b1.click()
@@ -600,7 +623,10 @@ async function main() {
   await waitFor(w2, () => db2.tasks.find((t) => t.title === 'کار یک').status === 'done', 10000, 'doing->done')
   const doneRow = db2.tasks.find((t) => t.title === 'کار یک')
   check('A2: doing -> done sets completed_at', !!doneRow.completed_at, JSON.stringify(doneRow.completed_at))
-  b1 = statusBtn(w2, 'کار یک')
+  // P01 C: a done task leaves «سررسیدها» (status != done); reopen it
+  // from «کارهای من», where done tasks still show.
+  clickMenu(w2, 'mine')
+  b1 = await waitFor(w2, () => statusBtn(w2, 'کار یک'), 10000, 'status button for done task 1')
   b1.click()
   await waitFor(w2, () => db2.tasks.find((t) => t.title === 'کار یک').status === 'todo', 10000, 'done->todo')
   check('A2: done -> todo clears completed_at', db2.tasks.find((t) => t.title === 'کار یک').completed_at === null)
@@ -608,6 +634,8 @@ async function main() {
   const m2r = await mountApp({ html, js }, stub2, '#/tasks')
   const w2r = m2r.w
   allErrors.push(...m2r.errors)
+  await waitFor(w2r, () => w2r.document.querySelector('button[data-menu="due"]'), 10000, 'planner menu bar after reload')
+  clickMenu(w2r, 'due')
   await waitFor(w2r, () => ['کار یک', 'کار دو', 'کار سه'].every((t) => w2r.document.body.textContent.includes(t)), 10000, 'all 3 tasks after reload')
   check('A2: 3 tasks stable after reload', true)
   check('A2: no-date task still shows «بدون تاریخ» after reload', w2r.document.body.textContent.includes('بدون تاریخ'))

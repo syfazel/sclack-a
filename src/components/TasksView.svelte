@@ -12,9 +12,87 @@
     deleteReminder,
     isOverdue
   } from '../lib/work.js'
-  import { TASK_STATUS_LABEL } from '../lib/extract.js'
+  import {
+    TASK_STATUS_LABEL,
+    PLANNER_MENUS,
+    WEEKDAY_LABELS_FA,
+    plannerMenuTasks,
+    plannerCalendarCounts,
+    plannerDayTasks,
+    plannerMenuDefaultDue,
+    endOfTehranDay,
+    jalaliMonthDays,
+    jalaliMonthLabel,
+    jalaliDayLabel,
+    tehranDayKey,
+    weekdayOfDayKey,
+    shiftJalaliMonth,
+    isOverdueTask
+  } from '../lib/extract.js'
   import SearchBox from './SearchBox.svelte'
   import FileList from './FileList.svelte'
+
+  // --- planner (P01 C): exactly the 8 menus of C1, on #/tasks ---
+  let plannerMenu = $state('today')
+  let calAnchor = $state(new Date())
+  let calSelectedDay = $state(null)
+  const todayKey = tehranDayKey(new Date())
+  const otherMemberId = $derived.by(() => {
+    const me = auth.member?.id
+    const other = ws.members.find((m) => m.id !== me)
+    return other ? other.id : null
+  })
+  const menuData = $derived(
+    plannerMenuTasks(ws.tasks, ws.reminders, plannerMenu, {
+      meId: auth.member?.id,
+      otherId: otherMemberId
+    })
+  )
+  // Count badges on the menu bar, all from real rows.
+  const menuCounts = $derived.by(() => {
+    const counts = {}
+    for (const m of PLANNER_MENUS) {
+      if (m.id === 'calendar') {
+        counts[m.id] = Object.values(plannerCalendarCounts(ws.tasks, new Date())).reduce(
+          (a, b) => a + b,
+          0
+        )
+      } else if (m.id === 'reminders') {
+        counts[m.id] = ws.reminders.length
+      } else {
+        const r = plannerMenuTasks(ws.tasks, ws.reminders, m.id, {
+          meId: auth.member?.id,
+          otherId: otherMemberId
+        })
+        counts[m.id] = r.tasks.length + (r.reminders?.length || 0)
+      }
+    }
+    return counts
+  })
+  const calMonth = $derived(jalaliMonthDays(calAnchor))
+  const calCounts = $derived(plannerCalendarCounts(ws.tasks, calAnchor))
+  const calDayTasks = $derived(
+    calSelectedDay ? plannerDayTasks(ws.tasks, calSelectedDay) : []
+  )
+  const calLeadBlanks = $derived(
+    calMonth.days.length > 0 ? (weekdayOfDayKey(calMonth.days[0].dayKey) + 1) % 7 : 0
+  )
+  const currentMenuLabel = $derived(
+    (PLANNER_MENUS.find((m) => m.id === plannerMenu) || {}).label || ''
+  )
+  const currentPrefill = $derived(
+    plannerMenuDefaultDue(plannerMenu, new Date(), calSelectedDay)
+  )
+
+  function selectMenu(id) {
+    plannerMenu = id
+    if (id === 'calendar' && !calSelectedDay) calSelectedDay = todayKey
+  }
+
+  function shiftCal(delta) {
+    calAnchor = shiftJalaliMonth(calAnchor, delta)
+    calSelectedDay = null
+  }
 
   // --- task form ---
   let taskTitle = $state('')
@@ -25,6 +103,15 @@
   let taskLinkId = $state('')
   let taskError = $state('')
   let taskBusy = $state(false)
+
+  // C3: the active menu prefills the form's due date (today, or the
+  // selected calendar day). Menus without a date context clear it.
+  // Switching menus re-applies the prefill — a date typed by hand in one
+  // menu does not carry over to another; clearing the date is how a
+  // task is created without due_at (A2, «بدون تاریخ»).
+  $effect(() => {
+    taskDue = plannerMenuDefaultDue(plannerMenu, new Date(), calSelectedDay)
+  })
 
   // --- templates ---
   let projectTemplateName = $state('')
@@ -83,14 +170,6 @@
     return '#/tasks'
   }
 
-  function isDue(task) {
-    return (
-      task.status !== 'done' &&
-      !!task.due_at &&
-      new Date(task.due_at).getTime() < Date.now()
-    )
-  }
-
   function fmtDate(iso) {
     if (!iso) return ''
     return new Date(iso).toLocaleDateString('fa-IR')
@@ -111,14 +190,14 @@
         title: taskTitle,
         description: taskDesc,
         assigneeId: taskAssignee || null,
-        dueAt: taskDue ? new Date(taskDue + 'T23:59:00').toISOString() : null,
+        dueAt: taskDue ? endOfTehranDay(taskDue) : null,
         linkType: taskLinkType || null,
         linkId: taskLinkId || null
       })
       taskTitle = ''
       taskDesc = ''
       taskAssignee = ''
-      taskDue = ''
+      taskDue = plannerMenuDefaultDue(plannerMenu, new Date(), calSelectedDay)
       taskLinkType = ''
       taskLinkId = ''
     } catch (e) {
@@ -171,7 +250,7 @@
         // goal and deadline are required.
         projectGoal: projectTemplateGoal,
         projectDeadline: projectTemplateDeadline
-          ? new Date(projectTemplateDeadline + 'T23:59:00').toISOString()
+          ? endOfTehranDay(projectTemplateDeadline)
           : ''
       })
       if (res.project) {
@@ -215,8 +294,111 @@
 </script>
 
 <div class="h-full overflow-y-auto px-4 py-6 md:px-8">
+  {#snippet taskRow(t)}
+    <li class="card bg-base-200">
+      <div class="card-body gap-1 py-3">
+        <div class="flex items-start gap-2">
+          <button
+            class="btn btn-sclack btn-sm {t.status === 'done'
+              ? 'btn-success'
+              : t.status === 'doing'
+                ? 'btn-warning'
+                : 'btn-outline'}"
+            onclick={() => doCycleTask(t)}
+            title="تغییر وضعیت"
+          >
+            {TASK_STATUS_LABEL[t.status] || t.status}
+          </button>
+          <span
+            class="min-w-0 flex-1 font-medium {t.status === 'done' ? 'line-through opacity-60' : ''}"
+          >
+            {t.title}
+          </span>
+          {#if auth.member && t.created_by === auth.member.id}
+            <button
+              class="btn btn-ghost btn-sm text-error"
+              onclick={() => doDeleteTask(t)}
+              title="حذف کار"
+            >
+              حذف
+            </button>
+          {/if}
+        </div>
+        {#if t.description}
+          <p class="text-sm opacity-70">{t.description}</p>
+        {/if}
+        <p class="text-xs opacity-60">
+          {#if t.assignee_id}سپرده به {memberName(t.assignee_id)} · {/if}
+          {#if t.due_at}
+            سررسید {fmtDate(t.due_at)}
+            {#if isOverdueTask(t)}<span class="font-bold text-error"> · عقب‌مانده</span>{/if}
+            ·
+          {:else}
+            <!-- P01 A2: a task without due_at is creatable but never
+                 appears in the planner menus; it carries this label. -->
+            بدون تاریخ ·
+          {/if}
+          {#if t.completed_at}تمام‌شده در {fmtDateTime(t.completed_at)} · {/if}
+          ساختهٔ {memberName(t.created_by)}
+        </p>
+        {#if linkLabel(t)}
+          <p class="text-xs">
+            <a href={linkHref(t)} class="link link-primary">{linkLabel(t)}</a>
+          </p>
+        {/if}
+        <div class="mt-1">
+          <button
+            class="btn btn-ghost btn-xs"
+            onclick={() =>
+              (openFilesTaskId = openFilesTaskId === t.id ? null : t.id)}
+          >
+            {openFilesTaskId === t.id ? 'پنهان کردن فایل‌ها' : 'فایل‌ها'}
+            ({taskFilesCount(t)})
+          </button>
+          {#if openFilesTaskId === t.id}
+            <div class="mt-2 rounded-xl bg-base-100 px-3 py-2">
+              <FileList
+                projectId={t.project_id}
+                attachedTo={{ type: 'task', id: t.id }}
+                filterAttached
+              />
+            </div>
+          {/if}
+        </div>
+        {#if taskErrorById[t.id]}
+          <p class="text-xs text-error">{taskErrorById[t.id]}</p>
+        {/if}
+      </div>
+    </li>
+  {/snippet}
+
+  {#snippet reminderRow(r)}
+    <li class="card bg-base-200">
+      <div class="card-body flex-row items-center gap-2 py-3">
+        <input
+          type="checkbox"
+          class="checkbox checkbox-primary"
+          checked={r.done}
+          onchange={(e) => setReminderDone(r, e.target.checked)}
+        />
+        <span class="min-w-0 flex-1 {r.done ? 'line-through opacity-60' : ''}">
+          {r.text}
+          {#if r.remind_at}
+            <span class="block text-xs opacity-60">
+              {fmtDateTime(r.remind_at)}
+              {#if isOverdue(r)}<span class="font-bold text-error"> · سررسید گذشته</span>{/if}
+            </span>
+          {/if}
+        </span>
+        <button class="btn btn-ghost btn-sm text-error" onclick={() => deleteReminder(r)}>
+          حذف
+        </button>
+      </div>
+    </li>
+  {/snippet}
+
   <h1 class="text-2xl font-bold">کارها</h1>
-  <p class="mt-1 text-sm opacity-70">فهرست کار، قالب و یادآوری پروژهٔ جاری.</p>
+  <p class="mt-1 text-sm opacity-70">دفتر برنامه‌ریزی — کارها و یادآوری‌های پروژهٔ جاری بر اساس زمان و تاریخ.</p>
 
   <div class="mt-6">
     <SearchBox />
@@ -225,8 +407,30 @@
   {#if !ws.currentProjectId}
     <p class="mt-6 text-sm opacity-60">اول یک پروژه بسازید یا انتخاب کنید.</p>
   {:else}
-    <!-- tasks -->
-    <section class="mt-8">
+    <!-- planner menu bar: exactly the 8 menus of P01 C1 -->
+    <div
+      class="mt-6 flex gap-2 overflow-x-auto pb-1"
+      role="tablist"
+      aria-label="منوهای دفتر برنامه‌ریزی"
+    >
+      {#each PLANNER_MENUS as m (m.id)}
+        <button
+          data-menu={m.id}
+          role="tab"
+          aria-selected={plannerMenu === m.id}
+          class="btn btn-sclack shrink-0 {plannerMenu === m.id ? 'btn-primary' : 'btn-outline'}"
+          onclick={() => selectMenu(m.id)}
+        >
+          {m.label}
+          <span class="badge badge-sm {plannerMenu === m.id ? 'badge-neutral' : 'badge-ghost'}">
+            {menuCounts[m.id] ?? 0}
+          </span>
+        </button>
+      {/each}
+    </div>
+
+    <!-- create a task from inside the active menu (C3) -->
+    <section class="mt-4">
       <h2 class="mb-2 text-lg font-bold">فهرست کار</h2>
       <div class="card bg-base-200">
         <div class="card-body gap-2">
@@ -284,6 +488,16 @@
               </select>
             {/if}
           </div>
+          {#if currentPrefill}
+            <p class="text-xs opacity-60">
+              سررسید پیش‌فرض از منوی «{currentMenuLabel}»: {fmtDate(currentPrefill)} — برای کار
+              بدون تاریخ، تاریخ را پاک کنید.
+            </p>
+          {:else}
+            <p class="text-xs opacity-60">
+              این منو سررسید پیش‌فرض ندارد — تاریخ را خودتان انتخاب کنید یا خالی بگذارید.
+            </p>
+          {/if}
           {#if taskError}
             <p class="text-xs text-error">{taskError}</p>
           {/if}
@@ -292,91 +506,189 @@
           </button>
         </div>
       </div>
-
-      {#if ws.tasks.length === 0}
-        <p class="mt-3 text-sm opacity-60">هنوز کاری نیست.</p>
-      {:else}
-        <ul class="mt-3 flex flex-col gap-2">
-          {#each ws.tasks as t (t.id)}
-            <li class="card bg-base-200">
-              <div class="card-body gap-1 py-3">
-                <div class="flex items-start gap-2">
-                  <button
-                    class="btn btn-sclack btn-sm {t.status === 'done'
-                      ? 'btn-success'
-                      : t.status === 'doing'
-                        ? 'btn-warning'
-                        : 'btn-outline'}"
-                    onclick={() => doCycleTask(t)}
-                    title="تغییر وضعیت"
-                  >
-                    {TASK_STATUS_LABEL[t.status] || t.status}
-                  </button>
-                  <span
-                    class="min-w-0 flex-1 font-medium {t.status === 'done' ? 'line-through opacity-60' : ''}"
-                  >
-                    {t.title}
-                  </span>
-                  {#if auth.member && t.created_by === auth.member.id}
-                    <button
-                      class="btn btn-ghost btn-sm text-error"
-                      onclick={() => doDeleteTask(t)}
-                      title="حذف کار"
-                    >
-                      حذف
-                    </button>
-                  {/if}
-                </div>
-                {#if t.description}
-                  <p class="text-sm opacity-70">{t.description}</p>
-                {/if}
-                <p class="text-xs opacity-60">
-                  {#if t.assignee_id}سپرده به {memberName(t.assignee_id)} · {/if}
-                  {#if t.due_at}
-                    سررسید {fmtDate(t.due_at)}
-                    {#if isDue(t)}<span class="font-bold text-error"> · سررسید گذشته</span>{/if}
-                    ·
-                  {:else}
-                    <!-- P01 A2: a task without due_at is creatable but never
-                         appears in the planner menus; it carries this label. -->
-                    بدون تاریخ ·
-                  {/if}
-                  {#if t.completed_at}تمام‌شده در {fmtDateTime(t.completed_at)} · {/if}
-                  ساختهٔ {memberName(t.created_by)}
-                </p>
-                {#if linkLabel(t)}
-                  <p class="text-xs">
-                    <a href={linkHref(t)} class="link link-primary">{linkLabel(t)}</a>
-                  </p>
-                {/if}
-                <div class="mt-1">
-                  <button
-                    class="btn btn-ghost btn-xs"
-                    onclick={() =>
-                      (openFilesTaskId = openFilesTaskId === t.id ? null : t.id)}
-                  >
-                    {openFilesTaskId === t.id ? 'پنهان کردن فایل‌ها' : 'فایل‌ها'}
-                    ({taskFilesCount(t)})
-                  </button>
-                  {#if openFilesTaskId === t.id}
-                    <div class="mt-2 rounded-xl bg-base-100 px-3 py-2">
-                      <FileList
-                        projectId={t.project_id}
-                        attachedTo={{ type: 'task', id: t.id }}
-                        filterAttached
-                      />
-                    </div>
-                  {/if}
-                </div>
-                {#if taskErrorById[t.id]}
-                  <p class="text-xs text-error">{taskErrorById[t.id]}</p>
-                {/if}
-              </div>
-            </li>
-          {/each}
-        </ul>
-      {/if}
     </section>
+
+    {#if plannerMenu === 'calendar'}
+      <!-- تقویم: نمای ماهانهٔ جلالی؛ هر روز شمار کارهای آن روز را نشان می‌دهد؛
+           کلیک روی روز فهرست آن روز را باز می‌کند (C2). -->
+      <section class="mt-6">
+        <div class="flex items-center justify-between gap-2">
+          <h2 class="text-lg font-bold">تقویم — {jalaliMonthLabel(calAnchor)}</h2>
+          <div class="flex gap-2">
+            <button class="btn btn-sclack btn-sm btn-outline" onclick={() => shiftCal(-1)}>
+              ماه قبل
+            </button>
+            <button class="btn btn-sclack btn-sm btn-outline" onclick={() => shiftCal(1)}>
+              ماه بعد
+            </button>
+          </div>
+        </div>
+        <div class="mt-3 grid grid-cols-7 gap-1 text-center text-xs font-bold opacity-70">
+          {#each WEEKDAY_LABELS_FA as d}
+            <div>{d}</div>
+          {/each}
+        </div>
+        <div class="mt-1 grid grid-cols-7 gap-1">
+          {#each Array.from({ length: calLeadBlanks }) as _}
+            <div></div>
+          {/each}
+          {#each calMonth.days as d (d.dayKey)}
+            <button
+              data-day={d.dayKey}
+              class="btn btn-sclack btn-sm h-auto min-h-11 flex-col gap-0 py-1 {calSelectedDay ===
+              d.dayKey
+                ? 'btn-primary'
+                : 'btn-ghost'} {d.dayKey === todayKey ? 'ring-2 ring-primary' : ''}"
+              onclick={() => (calSelectedDay = d.dayKey)}
+            >
+              <span>{d.jalaliDay}</span>
+              {#if calCounts[d.dayKey] > 0}
+                <span class="badge badge-sm badge-ghost">{calCounts[d.dayKey]}</span>
+              {/if}
+            </button>
+          {/each}
+        </div>
+        {#if calSelectedDay}
+          <h3 class="mt-6 mb-2 text-lg font-bold">کارهای {jalaliDayLabel(calSelectedDay)}</h3>
+          {#if calDayTasks.length === 0}
+            <p class="mt-3 text-sm opacity-60">در این روز کاری نیست.</p>
+          {:else}
+            <ul class="mt-3 flex flex-col gap-2">
+              {#each calDayTasks as t (t.id)}
+                {@render taskRow(t)}
+              {/each}
+            </ul>
+          {/if}
+        {:else}
+          <p class="mt-6 text-sm opacity-60">یک روز را انتخاب کنید.</p>
+        {/if}
+      </section>
+    {:else if plannerMenu === 'reminders'}
+      <!-- یادآوری‌ها: فقط فهرست درون‌اپی است — اعلان پوش نمی‌فرستیم (C2). -->
+      <section class="mt-6">
+        <h2 class="mb-2 text-lg font-bold">یادآوری‌ها</h2>
+        <p class="mb-2 text-xs opacity-60">فقط فهرست درون‌اپی است — اعلان پوش نمی‌فرستیم.</p>
+        <div class="card bg-base-200">
+          <div class="card-body gap-2">
+            <input
+              class="input input-bordered input-sclack w-full bg-base-100"
+              placeholder="متن یادآوری"
+              bind:value={remText}
+              disabled={remBusy}
+            />
+            <div class="flex flex-wrap gap-2">
+              <select
+                class="select select-bordered input-sclack min-w-0 flex-1 bg-base-100"
+                bind:value={remTargetType}
+                onchange={() => (remTargetId = '')}
+                disabled={remBusy}
+              >
+                <option value="">بدون پیوند</option>
+                <option value="task">پیوند به کار</option>
+                <option value="doc">پیوند به سند</option>
+              </select>
+              {#if remTargetType}
+                <select
+                  class="select select-bordered input-sclack min-w-0 flex-1 bg-base-100"
+                  bind:value={remTargetId}
+                  disabled={remBusy}
+                >
+                  <option value="">انتخاب کنید</option>
+                  {#if remTargetType === 'task'}
+                    {#each ws.tasks as t (t.id)}
+                      <option value={t.id}>{t.title}</option>
+                    {/each}
+                  {:else}
+                    {#each ws.docs as d (d.id)}
+                      <option value={d.id}>{d.title}</option>
+                    {/each}
+                  {/if}
+                </select>
+              {/if}
+              <input
+                type="datetime-local"
+                class="input input-bordered input-sclack bg-base-100"
+                bind:value={remAt}
+                disabled={remBusy}
+              />
+            </div>
+            {#if remError}
+              <p class="text-xs text-error">{remError}</p>
+            {/if}
+            <button
+              class="btn btn-sclack btn-primary w-full"
+              onclick={doCreateReminder}
+              disabled={remBusy}
+            >
+              ساختن یادآوری
+            </button>
+          </div>
+        </div>
+        {#if ws.reminders.length === 0}
+          <p class="mt-3 text-sm opacity-60">یادآوری نیست.</p>
+        {:else}
+          <ul class="mt-3 flex flex-col gap-2">
+            {#each ws.reminders as r (r.id)}
+              {@render reminderRow(r)}
+            {/each}
+          </ul>
+        {/if}
+      </section>
+    {:else}
+      <!-- the other six menus: one filtered task list -->
+      <section class="mt-6">
+        {#if plannerMenu === 'mine'}
+          <h2 class="mb-2 text-lg font-bold">کارهای من</h2>
+        {:else if plannerMenu === 'other'}
+          <h2 class="mb-2 text-lg font-bold">
+            کارهای {otherMemberId ? memberName(otherMemberId) : 'نفر دوم'}
+          </h2>
+        {:else if plannerMenu === 'due'}
+          <h2 class="mb-2 text-lg font-bold">سررسیدها</h2>
+        {:else if plannerMenu === 'week'}
+          <h2 class="mb-2 text-lg font-bold">این هفته</h2>
+        {:else if plannerMenu === 'month'}
+          <h2 class="mb-2 text-lg font-bold">این ماه</h2>
+        {:else}
+          <h2 class="mb-2 text-lg font-bold">امروز</h2>
+        {/if}
+        {#if menuData.tasks.length === 0}
+          <p class="mt-3 text-sm opacity-60">
+            {#if plannerMenu === 'today'}
+              کاری برای امروز نیست.
+            {:else if plannerMenu === 'week'}
+              کاری در ۷ روز آینده نیست.
+            {:else if plannerMenu === 'month'}
+              کاری در این ماه نیست.
+            {:else if plannerMenu === 'due'}
+              کاری باز نیست.
+            {:else if plannerMenu === 'mine'}
+              کاری به شما سپرده نشده است.
+            {:else if plannerMenu === 'other'}
+              {#if otherMemberId}
+                کاری به نفر دوم سپرده نشده است.
+              {:else}
+                عضو دیگری در پروژه نیست.
+              {/if}
+            {/if}
+          </p>
+        {:else}
+          <ul class="mt-3 flex flex-col gap-2">
+            {#each menuData.tasks as t (t.id)}
+              {@render taskRow(t)}
+            {/each}
+          </ul>
+        {/if}
+        {#if plannerMenu === 'today' && menuData.reminders.length > 0}
+          <h3 class="mt-6 mb-2 text-lg font-bold">یادآوری‌های امروز</h3>
+          <ul class="mt-3 flex flex-col gap-2">
+            {#each menuData.reminders as r (r.id)}
+              {@render reminderRow(r)}
+            {/each}
+          </ul>
+        {/if}
+      </section>
+    {/if}
 
     <!-- templates -->
     <section class="mt-8">
@@ -438,96 +750,6 @@
       {/if}
       {#if templateMsg}
         <p class="mt-2 text-xs opacity-70">{templateMsg}</p>
-      {/if}
-    </section>
-
-    <!-- reminders -->
-    <section class="mt-8">
-      <h2 class="mb-2 text-lg font-bold">یادآوری‌ها</h2>
-      <p class="mb-2 text-xs opacity-60">
-        فقط فهرست درون‌اپی است — اعلان پوش نمی‌فرستیم.
-      </p>
-      <div class="card bg-base-200">
-        <div class="card-body gap-2">
-          <input
-            class="input input-bordered input-sclack w-full bg-base-100"
-            placeholder="متن یادآوری"
-            bind:value={remText}
-            disabled={remBusy}
-          />
-          <div class="flex flex-wrap gap-2">
-            <select
-              class="select select-bordered input-sclack min-w-0 flex-1 bg-base-100"
-              bind:value={remTargetType}
-              onchange={() => (remTargetId = '')}
-              disabled={remBusy}
-            >
-              <option value="">بدون پیوند</option>
-              <option value="task">پیوند به کار</option>
-              <option value="doc">پیوند به سند</option>
-            </select>
-            {#if remTargetType}
-              <select
-                class="select select-bordered input-sclack min-w-0 flex-1 bg-base-100"
-                bind:value={remTargetId}
-                disabled={remBusy}
-              >
-                <option value="">انتخاب کنید</option>
-                {#if remTargetType === 'task'}
-                  {#each ws.tasks as t (t.id)}
-                    <option value={t.id}>{t.title}</option>
-                  {/each}
-                {:else}
-                  {#each ws.docs as d (d.id)}
-                    <option value={d.id}>{d.title}</option>
-                  {/each}
-                {/if}
-              </select>
-            {/if}
-            <input
-              type="datetime-local"
-              class="input input-bordered input-sclack bg-base-100"
-              bind:value={remAt}
-              disabled={remBusy}
-            />
-          </div>
-          {#if remError}
-            <p class="text-xs text-error">{remError}</p>
-          {/if}
-          <button class="btn btn-sclack btn-primary w-full" onclick={doCreateReminder} disabled={remBusy}>
-            ساختن یادآوری
-          </button>
-        </div>
-      </div>
-      {#if ws.reminders.length === 0}
-        <p class="mt-3 text-sm opacity-60">یادآوری نیست.</p>
-      {:else}
-        <ul class="mt-3 flex flex-col gap-2">
-          {#each ws.reminders as r (r.id)}
-            <li class="card bg-base-200">
-              <div class="card-body flex-row items-center gap-2 py-3">
-                <input
-                  type="checkbox"
-                  class="checkbox checkbox-primary"
-                  checked={r.done}
-                  onchange={(e) => setReminderDone(r, e.target.checked)}
-                />
-                <span class="min-w-0 flex-1 {r.done ? 'line-through opacity-60' : ''}">
-                  {r.text}
-                  {#if r.remind_at}
-                    <span class="block text-xs opacity-60">
-                      {fmtDateTime(r.remind_at)}
-                      {#if isOverdue(r)}<span class="font-bold text-error"> · سررسید گذشته</span>{/if}
-                    </span>
-                  {/if}
-                </span>
-                <button class="btn btn-ghost btn-sm text-error" onclick={() => deleteReminder(r)}>
-                  حذف
-                </button>
-              </div>
-            </li>
-          {/each}
-        </ul>
       {/if}
     </section>
   {/if}

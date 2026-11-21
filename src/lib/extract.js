@@ -179,3 +179,227 @@ export function extractTaskSuggestions(text, limit = 8) {
   }
   return out
 }
+
+// ---------- P01 block C: planner notebook ----------
+// Pure date/menu logic for the planner on #/tasks. All functions take an
+// explicit `now` so the sandbox probe can pin the clock. "Tehran day" =
+// the Gregorian calendar date in Asia/Tehran (Iran has no DST since
+// 2022, so 24h steps keep the same Tehran time-of-day). "Month" is the
+// Jalali month in Tehran, matching the تقویم grid and the fa-IR dates
+// the UI already shows; the week is today + the next 6 days (7 days
+// inclusive of today).
+
+export const PLANNER_MENUS = [
+  { id: 'today', label: 'امروز' },
+  { id: 'week', label: 'این هفته' },
+  { id: 'month', label: 'این ماه' },
+  { id: 'due', label: 'سررسیدها' },
+  { id: 'mine', label: 'کارهای من' },
+  { id: 'other', label: 'کارهای نفر دوم' },
+  { id: 'calendar', label: 'تقویم' },
+  { id: 'reminders', label: 'یادآوری‌ها' }
+]
+
+// Weekday header for the calendar grid: the Iranian week starts Saturday.
+export const WEEKDAY_LABELS_FA = ['شنبه', 'یکشنبه', 'دوشنبه', 'سه‌شنبه', 'چهارشنبه', 'پنجشنبه', 'جمعه']
+
+const TEHRAN_TZ = 'Asia/Tehran'
+const DAY_MS = 86400000
+
+const tehranDayFmt = new Intl.DateTimeFormat('en-CA', {
+  timeZone: TEHRAN_TZ, year: 'numeric', month: '2-digit', day: '2-digit'
+})
+const jalaliFmt = new Intl.DateTimeFormat('fa-IR-u-ca-persian-nu-latn', {
+  timeZone: TEHRAN_TZ, year: 'numeric', month: 'numeric', day: 'numeric'
+})
+const jalaliMonthLabelFmt = new Intl.DateTimeFormat('fa-IR-u-ca-persian', {
+  timeZone: TEHRAN_TZ, month: 'long', year: 'numeric'
+})
+const jalaliDayLabelFmt = new Intl.DateTimeFormat('fa-IR-u-ca-persian', {
+  timeZone: TEHRAN_TZ, day: 'numeric', month: 'long', year: 'numeric'
+})
+
+function intlParts(fmt, date) {
+  const o = {}
+  for (const p of fmt.formatToParts(date)) o[p.type] = p.value
+  return o
+}
+
+function toDate(d) {
+  return d instanceof Date ? d : new Date(d)
+}
+
+// Tehran calendar day key, 'YYYY-MM-DD' (Gregorian date in Tehran).
+export function tehranDayKey(date) {
+  const p = intlParts(tehranDayFmt, toDate(date))
+  return p.year + '-' + p.month + '-' + p.day
+}
+
+// Jalali (Tehran) parts, Latin digits.
+export function jalaliParts(date) {
+  const p = intlParts(jalaliFmt, toDate(date))
+  return { year: Number(p.year), month: Number(p.month), day: Number(p.day) }
+}
+
+// Jalali month key, 'YYYY-MM' (e.g. '1405-08').
+export function jalaliMonthKey(date) {
+  const p = jalaliParts(date)
+  return p.year + '-' + String(p.month).padStart(2, '0')
+}
+
+// Jalali month label, e.g. «آبان ۱۴۰۵».
+export function jalaliMonthLabel(date) {
+  return jalaliMonthLabelFmt.format(toDate(date))
+}
+
+// Jalali day label, e.g. «۳۰ آبان ۱۴۰۵».
+export function jalaliDayLabel(date) {
+  return jalaliDayLabelFmt.format(toDate(date))
+}
+
+// End of a Tehran calendar day as ISO: a date picked in a
+// <input type="date"> means that Tehran day, not the browser's local
+// day — `new Date(key + 'T23:59:00')` parses in the browser's timezone,
+// which moves the day for any user not in Tehran (and for the UTC
+// sandbox). Tehran is fixed at UTC+3:30 (no DST since 2022).
+export function endOfTehranDay(dayKey) {
+  return new Date(dayKey + 'T23:59:00+03:30').toISOString()
+}
+
+export function addTehranDays(date, n) {
+  return new Date(toDate(date).getTime() + n * DAY_MS)
+}
+
+// Weekday of a Tehran day key: 0 = Sunday … 6 = Saturday (the same
+// 7-day cycle in every calendar). Noon UTC avoids any TZ edge.
+export function weekdayOfDayKey(dayKey) {
+  return new Date(dayKey + 'T12:00:00Z').getUTCDay()
+}
+
+// Days of the Jalali month containing `anchor`, in order. Each day:
+// { dayKey (Tehran), jalaliDay, weekday (0=Sun..6=Sat), date }.
+export function jalaliMonthDays(anchor) {
+  const a = toDate(anchor)
+  const jp = jalaliParts(a)
+  const first = new Date(a.getTime() - (jp.day - 1) * DAY_MS)
+  const days = []
+  let cur = first
+  for (;;) {
+    const cp = jalaliParts(cur)
+    if (cp.year !== jp.year || cp.month !== jp.month) break
+    days.push({
+      dayKey: tehranDayKey(cur),
+      jalaliDay: cp.day,
+      weekday: weekdayOfDayKey(tehranDayKey(cur)),
+      date: cur
+    })
+    if (days.length > 40) break // safety: a Jalali month is 29–31 days
+    cur = new Date(cur.getTime() + DAY_MS)
+  }
+  return { year: jp.year, month: jp.month, days }
+}
+
+// A date in the Jalali month `delta` months away from `anchor`'s month.
+export function shiftJalaliMonth(anchor, delta) {
+  let cur = toDate(anchor)
+  if (delta > 0) {
+    for (let i = 0; i < delta; i++) {
+      const { days } = jalaliMonthDays(cur)
+      cur = new Date(days[days.length - 1].date.getTime() + DAY_MS)
+    }
+  } else if (delta < 0) {
+    for (let i = 0; i < -delta; i++) {
+      const jp = jalaliParts(cur)
+      cur = new Date(cur.getTime() - jp.day * DAY_MS)
+    }
+  }
+  return cur
+}
+
+// Overdue = due_at past and not done (spec C2, same rule as A4).
+export function isOverdueTask(task, now = new Date()) {
+  return (
+    task.status !== 'done' &&
+    !!task.due_at &&
+    new Date(task.due_at).getTime() < toDate(now).getTime()
+  )
+}
+
+// The rows one planner menu shows. `now` is a Date (pinned by the
+// probe). Literal to the spec: only «سررسیدها» filters status != done;
+// today/week/month/calendar/mine/other show done tasks too (their rows
+// carry the «تمام‌شده» state). Tasks without due_at never appear in
+// today/week/month; in «سررسیدها» they come last with the «بدون تاریخ»
+// label (C2 acceptance).
+export function plannerMenuTasks(tasks, reminders, menuId, { now = new Date(), meId = null, otherId = null } = {}) {
+  const list = tasks || []
+  const rems = reminders || []
+  const todayKey = tehranDayKey(now)
+  const weekKeys = new Set()
+  for (let i = 0; i < 7; i++) weekKeys.add(tehranDayKey(addTehranDays(now, i)))
+  const monthKey = jalaliMonthKey(now)
+  switch (menuId) {
+    case 'today':
+      return {
+        tasks: list.filter((t) => t.due_at && tehranDayKey(t.due_at) === todayKey),
+        reminders: rems.filter((r) => r.remind_at && tehranDayKey(r.remind_at) === todayKey)
+      }
+    case 'week':
+      return {
+        tasks: list.filter((t) => t.due_at && weekKeys.has(tehranDayKey(t.due_at))),
+        reminders: []
+      }
+    case 'month':
+      return {
+        tasks: list.filter((t) => t.due_at && jalaliMonthKey(t.due_at) === monthKey),
+        reminders: []
+      }
+    case 'due': {
+      const dated = list
+        .filter((t) => t.status !== 'done' && t.due_at)
+        .sort((a, b) => new Date(a.due_at) - new Date(b.due_at))
+      const undated = list.filter((t) => t.status !== 'done' && !t.due_at)
+      return { tasks: [...dated, ...undated], reminders: [] }
+    }
+    case 'mine':
+      return { tasks: list.filter((t) => t.assignee_id === meId), reminders: [] }
+    case 'other':
+      return { tasks: list.filter((t) => t.assignee_id === otherId), reminders: [] }
+    case 'reminders':
+      return { tasks: [], reminders: rems }
+    case 'calendar':
+      return { tasks: list, reminders: [] }
+    default:
+      return { tasks: [], reminders: [] }
+  }
+}
+
+// Per-day task counts for the calendar month containing `anchor`:
+// { dayKey: count } — only days of that Jalali month are keys.
+export function plannerCalendarCounts(tasks, anchor) {
+  const { days } = jalaliMonthDays(anchor)
+  const counts = {}
+  for (const d of days) counts[d.dayKey] = 0
+  for (const t of tasks || []) {
+    if (!t.due_at) continue
+    const k = tehranDayKey(t.due_at)
+    if (k in counts) counts[k]++
+  }
+  return counts
+}
+
+// Tasks due on one Tehran day.
+export function plannerDayTasks(tasks, dayKey) {
+  return (tasks || []).filter((t) => t.due_at && tehranDayKey(t.due_at) === dayKey)
+}
+
+// C3: the due-date prefill for a task created from inside a menu.
+// Menus with a date context prefill it (today, or the selected calendar
+// day); menus without one (mine / other / reminders) prefill nothing.
+export function plannerMenuDefaultDue(menuId, now = new Date(), selectedDayKey = null) {
+  if (menuId === 'today' || menuId === 'week' || menuId === 'month' || menuId === 'due') {
+    return tehranDayKey(now)
+  }
+  if (menuId === 'calendar') return selectedDayKey || tehranDayKey(now)
+  return ''
+}
