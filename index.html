@@ -110,6 +110,9 @@
       button.danger { background: var(--card); color: var(--red); border-color: var(--red); }
       button.danger:hover { background: var(--red-soft); }
       button:disabled { opacity: 0.45; cursor: not-allowed; }
+      .auth-msg { margin-top: 10px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--card-2); font-size: 14px; line-height: 1.7; min-height: 20px; overflow-wrap: anywhere; }
+      .auth-msg.error { border-color: var(--red); background: var(--red-soft); }
+      .auth-msg.rate-limited { border-color: var(--amber); background: var(--amber-soft); }
       .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 12px; }
       .hint { font-size: 13px; color: var(--ink-soft); }
       .mono { font-family: ui-monospace, "Courier New", monospace; direction: ltr; unicode-bidi: embed; font-size: 13px; word-break: break-all; }
@@ -252,6 +255,7 @@
           <button id="btn-signin" disabled>ورود</button>
           <button class="secondary" id="btn-signout" disabled>خروج</button>
         </div>
+        <div class="auth-msg" id="auth-msg" role="status"></div>
         <div class="kv" style="margin-top:10px">
           <div><b>نشست:</b> <span id="session-state">وارد نشده‌اید.</span></div>
           <div><b>شناسهٔ کاربر:</b> <span class="mono" id="user-id">—</span></div>
@@ -269,9 +273,10 @@
           رویداد باید از کلاینت دیگری برسد.
         </p>
         <div class="row">
-          <button id="btn-send-msg" disabled>فرستادن پیام پروب</button>
+          <button id="btn-send-msg">فرستادن پیام پروب</button>
           <button class="secondary" id="btn-del-msgs" disabled>پاک‌کردن پیام‌های پروب من</button>
         </div>
+        <p class="hint" id="send-state">برای فرستادن پیام، اول کلید anon را وارد کنید.</p>
         <p class="hint">وضعیت اشتراک: <span id="rt-sub-state">فعال نیست.</span></p>
         <h3 style="margin-top:14px">رویدادهای رسیده</h3>
         <div class="events" id="rt-events"><div class="hint">هنوز رویدادی نرسیده است.</div></div>
@@ -402,6 +407,8 @@
         var sb = null;             // کلاینت Supabase — فقط بعد از دادن کلید ساخته می‌شود
         var session = null;
         var member = null;         // ردیف members کاربر جاری
+        var memberError = null;    // آخرین خطای ساخت ردیف عضو — تا کنار دکمهٔ فرستادن دیده شود
+        var ensureMemberRunning = false;
         var rtChannel = null;
         var docsChannel = null;
         var docsPollTimer = null;
@@ -540,6 +547,9 @@
           sb.auth.onAuthStateChange(function (_event, sess) {
             session = sess;
             renderSession();
+            // اگر نشست از راه رویداد Auth رسید (نه از دکمهٔ ورود/ثبت‌نام)،
+            // ردیف عضو را هم از همین‌جا بساز تا دکمهٔ فرستادن بی‌دلیل قفل نماند.
+            if (sess && sess.user) ensureMemberFor(sess.user);
           });
         }
         function teardownClient(silent) {
@@ -554,7 +564,6 @@
           $('btn-signup').disabled = true;
           $('btn-signin').disabled = true;
           $('btn-signout').disabled = true;
-          $('btn-send-msg').disabled = true;
           $('btn-del-msgs').disabled = true;
           $('btn-s2-write').disabled = true;
           $('btn-cleanup').disabled = true;
@@ -566,6 +575,23 @@
         }
 
         // ---------- نشست و عضو ----------
+        // وضعیت فرستادن، همیشه و با متن روشن، کنار دکمهٔ «فرستادن پیام پروب»
+        // نشان داده می‌شود تا دکمه هیچ‌وقت بی‌صدا و بی‌دلیل از کار نیفتد.
+        function updateSendState() {
+          var el = $('send-state');
+          if (!el) return;
+          if (!sb) {
+            el.textContent = 'برای فرستادن پیام، اول کلید anon را وارد کنید.';
+          } else if (!session || !session.user) {
+            el.textContent = 'وارد نشده‌اید — اول با ایمیل و رمز وارد شوید.';
+          } else if (!member) {
+            el.textContent = memberError
+              ? 'ردیف عضو (members) ساخته نشد: ' + memberError + ' — دوباره وارد شوید یا گزارش را ببینید.'
+              : 'در حال ساخت ردیف عضو (members)… اگر این پیام ماند، دوباره وارد شوید.';
+          } else {
+            el.textContent = 'آمادهٔ فرستادن پیام پروب است.';
+          }
+        }
         function renderSession() {
           var signedIn = !!(session && session.user);
           $('session-state').textContent = signedIn ? 'وارد شده‌اید و نشست زنده است.' : 'وارد نشده‌اید.';
@@ -579,11 +605,23 @@
             setLight('light-auth', '', 'note-auth', 'هنوز وارد نشده‌اید.');
           }
           var ready = signedIn && !!member;
-          $('btn-send-msg').disabled = !ready;
           $('btn-del-msgs').disabled = !ready;
           $('btn-s2-write').disabled = !ready;
           $('btn-cleanup').disabled = !ready;
           $('btn-rls-check').disabled = !ready;
+          updateSendState();
+        }
+
+        // یک‌بارمصرف‌سازی ساخت ردیف عضو: هم از دکمهٔ ورود/ثبت‌نام و هم از
+        // رویداد Auth صدا زده می‌شود؛ اجرای هم‌زمان دوم ممنوع است.
+        function ensureMemberFor(user) {
+          if (!user || !sb) return;
+          if (member && member.muse_id === 'auth:' + user.id) return;
+          if (ensureMemberRunning) return;
+          ensureMemberRunning = true;
+          Promise.resolve().then(function () { return ensureMember(user); }).then(
+            function () { ensureMemberRunning = false; },
+            function () { ensureMemberRunning = false; });
         }
 
         function ensureMember(user) {
@@ -593,6 +631,7 @@
             .then(function (res) {
               if (res.error) throw res.error;
               member = res.data;
+              memberError = null;
               log('ردیف عضو ساخته/به‌روز شد: ' + member.id);
               renderSession();
               startRealtime();
@@ -606,6 +645,7 @@
                   .then(function (res2) {
                     if (res2.error) throw res2.error;
                     member = res2.data;
+                    memberError = null;
                     renderSession();
                     startRealtime();
                     startDocsSync();
@@ -614,42 +654,93 @@
               throw err;
             })
             .catch(function (err) {
-              log('ساخت ردیف عضو ناموفق بود: ' + (err.message || err));
+              memberError = (err && err.message) || String(err);
+              log('ساخت ردیف عضو ناموفق بود: ' + memberError);
+              renderSession();
             });
         }
 
         function afterAuth(user) {
           log('ورود موفق: ' + (user.email || ''));
-          ensureMember(user);
+          ensureMemberFor(user);
+        }
+
+        // ---------- پیام‌های ورود/ثبت‌نام ----------
+        function showAuthMsg(text, kind) {
+          var el = $('auth-msg');
+          if (!el) return;
+          el.textContent = text;
+          el.className = 'auth-msg' + (kind ? ' ' + kind : '');
+        }
+        function isRateLimitError(err) {
+          var m = (err && err.message) || '';
+          return (err && err.status === 429) || /rate limit/i.test(m);
+        }
+        // متن دقیق خطای Supabase را همان‌طور که هست نشان می‌دهد؛ خلاصه نمی‌کند.
+        function handleAuthError(where, err) {
+          var exact = (err && err.message) || String(err);
+          log(where + ' ناموفق: ' + exact);
+          if (isRateLimitError(err)) {
+            log(where + ': به سقف نرخ ایمیل رسیدی — صبر کن و دوباره تلاش کن.');
+            showAuthMsg('به سقف نرخ ایمیل رسیدی — کمی صبر کن و بعد دوباره تلاش کن. پیام دقیق Supabase: ' + exact, 'rate-limited');
+          } else {
+            showAuthMsg(where + ' ناموفق: ' + exact, 'error');
+          }
+        }
+        // اعتبارسنجی ایمیل پیش از فرستادن (فقط ثبت‌نام): دامنهٔ نامعتبر همان‌جا
+        // گفته می‌شود و درخواست اصلاً فرستاده نمی‌شود.
+        function validateSignupEmail(email) {
+          var at = email.lastIndexOf('@');
+          if (at <= 0 || at === email.length - 1) return 'ایمیل معتبر نیست: یک ایمیل کامل به شکل name@domain بنویسید.';
+          if (!/^[^\s@]+$/.test(email.slice(0, at))) return 'ایمیل معتبر نیست: بخش پیش از @ خالی یا نامعتبر است.';
+          var domain = email.slice(at + 1).toLowerCase();
+          if (/^\[.*\]$/.test(domain)) return 'ایمیل معتبر نیست: دامنهٔ «' + domain + '» پذیرفته نمی‌شود؛ از یک ایمیل واقعی استفاده کنید.';
+          var labels = domain.split('.');
+          if (labels.length < 2 || labels.some(function (l) { return !l; })) return 'ایمیل معتبر نیست: دامنهٔ «' + domain + '» ناقص است؛ دامنه باید نقطه داشته باشد (مثلاً gmail.com).';
+          var tld = labels[labels.length - 1];
+          if (!/^[a-z]{2,}$/.test(tld)) return 'ایمیل معتبر نیست: پسوند دامنهٔ «' + domain + '» معتبر نیست.';
+          var reserved = ['example.com', 'example.net', 'example.org', 'example.edu'];
+          var badSuffix = ['.local', '.localhost', '.invalid', '.test', '.example', '.internal', '.onion'];
+          var bad = reserved.indexOf(domain) !== -1 || badSuffix.some(function (s) { return domain === s.slice(1) || domain.endsWith(s); });
+          if (bad) return 'ایمیل معتبر نیست: دامنهٔ «' + domain + '» دامنهٔ واقعی و قابل‌ارسال نیست (دامنهٔ آزمایشی/رزرو شده است)؛ از یک ایمیل واقعی (مثلاً Gmail) استفاده کنید.';
+          return null;
         }
 
         $('btn-signup').addEventListener('click', function () {
           if (!sb) return;
           var email = $('auth-email').value.trim();
           var pass = $('auth-pass').value;
-          if (!email || !pass) { log('ایمیل و رمز را کامل وارد کنید.'); return; }
+          if (!email || !pass) { var m0 = 'ایمیل و رمز را کامل وارد کنید.'; log(m0); showAuthMsg(m0, 'error'); return; }
+          var bad = validateSignupEmail(email);
+          if (bad) { log('ثبت‌نام فرستاده نشد: ' + bad); showAuthMsg(bad, 'error'); return; }
+          showAuthMsg('در حال ثبت‌نام…', '');
           sb.auth.signUp({ email: email, password: pass }).then(function (res) {
-            if (res.error) { log('ثبت‌نام ناموفق: ' + res.error.message); return; }
+            if (res.error) { handleAuthError('ثبت‌نام', res.error); return; }
             if (res.data.session && res.data.user) {
+              showAuthMsg('ثبت‌نام و ورود انجام شد.', '');
               session = res.data.session;
               renderSession();
               afterAuth(res.data.user);
             } else {
-              log('ثبت‌نام انجام شد ولی نشست فوری ساخته نشد (احتمالاً تأیید ایمیل فعال است)؛ از داشبورد Supabase تأیید ایمیل را برای حساب‌های آزمایشی خاموش کنید یا کاربر را دستی تأیید کنید، بعد وارد شوید.');
+              var m1 = 'ثبت‌نام انجام شد ولی نشست فوری ساخته نشد (احتمالاً تأیید ایمیل فعال است)؛ از داشبورد Supabase تأیید ایمیل را برای حساب‌های آزمایشی خاموش کنید یا کاربر را دستی تأیید کنید، بعد وارد شوید.';
+              log(m1);
+              showAuthMsg(m1, 'error');
             }
-          });
+          }).catch(function (err) { handleAuthError('ثبت‌نام', err); });
         });
         $('btn-signin').addEventListener('click', function () {
           if (!sb) return;
           var email = $('auth-email').value.trim();
           var pass = $('auth-pass').value;
-          if (!email || !pass) { log('ایمیل و رمز را کامل وارد کنید.'); return; }
+          if (!email || !pass) { var m2 = 'ایمیل و رمز را کامل وارد کنید.'; log(m2); showAuthMsg(m2, 'error'); return; }
+          showAuthMsg('در حال ورود…', '');
           sb.auth.signInWithPassword({ email: email, password: pass }).then(function (res) {
-            if (res.error) { log('ورود ناموفق: ' + res.error.message); return; }
+            if (res.error) { handleAuthError('ورود', res.error); return; }
+            showAuthMsg('ورود انجام شد.', '');
             session = res.data.session;
             renderSession();
             afterAuth(res.data.user);
-          });
+          }).catch(function (err) { handleAuthError('ورود', err); });
         });
         $('btn-signout').addEventListener('click', function () {
           if (!sb) return;
@@ -695,7 +786,15 @@
         }
 
         $('btn-send-msg').addEventListener('click', function () {
-          if (!sb || !member) return;
+          // این دکمه هیچ‌وقت غیرفعال نمی‌شود تا هر کلیک دلیلش را بگوید:
+          // سکوت کامل دکمه در پروب زنده، از همین نگهبانِ بی‌صدا بود.
+          if (!sb) { log('فرستادن ممکن نیست: هنوز کلید anon داده نشده و کلاینت ساخته نشده است.'); updateSendState(); return; }
+          if (!session || !session.user) { log('فرستادن ممکن نیست: هنوز وارد نشده‌اید؛ اول با ایمیل و رمز وارد شوید.'); updateSendState(); return; }
+          if (!member) {
+            log('فرستادن ممکن نیست: ردیف عضو (members) هنوز ساخته نشده است' + (memberError ? ' — خطا: ' + memberError : '؛ اگر چند ثانیه گذشت و این پیام ماند، دوباره وارد شوید.') + ' تا ردیف عضو ساخته نشود، پیام فرستاده نمی‌شود.');
+            updateSendState();
+            return;
+          }
           var n = nonce();
           sb.from('messages').insert({
             room_id: null,
