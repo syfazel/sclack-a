@@ -1,7 +1,7 @@
 <script>
-  import { auth } from '../lib/store.svelte.js'
+  import { auth, ws } from '../lib/store.svelte.js'
   import { sb } from '../lib/supabase.js'
-  import { memberName } from '../lib/data.js'
+  import { memberName, loadProjectData } from '../lib/data.js'
   import {
     loadDocRow,
     loadRowStateInto,
@@ -27,7 +27,6 @@
   let ytext = null
   let bc = null
   let rowChannel = null
-  let unbind = null
   let lastSavedB64 = $state(null)
   let saveState = $state('') // '', 'saving', 'saved', 'error'
   let saveTimer = null
@@ -99,16 +98,24 @@
     ytext = text
     await loadRowStateInto(docRow, ydoc)
     lastSavedB64 = null
+    // If this doc belongs to another project than the one selected (deep
+    // link / reload on #/doc/...), sync the workspace to the doc's project
+    // so the sidebar lists and file list show this project's rows.
+    if (docRow.project_id && ws.currentProjectId !== docRow.project_id) {
+      ws.currentProjectId = docRow.project_id
+      await loadProjectData(docRow.project_id)
+    }
     bc = connectBroadcast(ydoc, docRow.yjs_doc_id, {
       name: auth.member?.name || 'عضو'
     })
     bc.awareness.on('change', refreshPresence)
     refreshPresence()
     ydoc.on('update', onDocUpdate)
-    if (textarea) {
-      textarea.value = ytext.toString()
-      unbind = bindTextarea(textarea, ytext, ydoc)
-    }
+    // NOTE: the textarea is NOT bound here. It only renders after
+    // `loading` turns false below, so `textarea` is still null at this
+    // point — binding here silently never happened (D6 bug 1: typed text
+    // never reached the Yjs doc). The bind effect below binds it once
+    // it is actually mounted.
     // Remote row saves (another browser) arrive here and merge in.
     if (sb) {
       rowChannel = sb
@@ -140,10 +147,6 @@
       // saveDocRow skips the write when nothing changed, so this is cheap.
       flushSave()
     }
-    if (unbind) {
-      unbind()
-      unbind = null
-    }
     if (ydoc) ydoc.off('update', onDocUpdate)
     if (bc) {
       bc.awareness.off('change', refreshPresence)
@@ -174,6 +177,18 @@
       cancelled = true
       cleanup()
     }
+  })
+
+  // Bind the textarea to the Yjs text once the textarea is actually
+  // mounted. It only renders after `loading` turns false in init(), so
+  // binding inside init() (when `textarea` is still null) silently never
+  // happened — that was D6 bug 1. This effect re-runs when `textarea`
+  // mounts/unmounts; its cleanup unbinds.
+  $effect(() => {
+    if (!textarea || !ydoc || !ytext) return
+    textarea.value = ytext.toString()
+    const unbind = bindTextarea(textarea, ytext, ydoc)
+    return () => unbind()
   })
 
   function onBeforeUnload() {

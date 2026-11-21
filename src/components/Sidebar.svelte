@@ -1,8 +1,7 @@
 <script>
   import { auth, ws, chat } from '../lib/store.svelte.js'
-  import { createProject, loadRooms } from '../lib/data.js'
-  import { loadDocs, createDoc } from '../lib/docs.js'
-  import { loadTasks } from '../lib/work.js'
+  import { createProject, loadProjectData } from '../lib/data.js'
+  import { createDoc } from '../lib/docs.js'
   import { signOut, validateChangePassword, changePassword } from '../lib/auth.js'
   import SearchBox from './SearchBox.svelte'
 
@@ -63,9 +62,7 @@
   async function selectProject(id) {
     ws.currentProjectId = id
     ws.currentRoomId = null
-    await loadRooms(id)
-    await loadDocs(id)
-    await loadTasks(id)
+    await loadProjectData(id)
     if (ws.rooms.length > 0) {
       location.hash = '#/room/' + ws.rooms[0].id
     } else {
@@ -130,6 +127,15 @@
       دستیار میوز — خلاصه و پیشنهاد
     </a>
     <p class="mt-1 text-xs opacity-50">فقط استخراجی؛ جمله‌ای ساخته نمی‌شود.</p>
+  </section>
+
+  <section>
+    <h2 class="mb-2 text-sm font-bold opacity-70">صفحه‌ها</h2>
+    <!-- D6 bug 6: the mobile bottom nav is the only tasks entry point and
+         it is hidden at md and up, so at 768px and wider the tasks page
+         was unreachable from the UI. These links cover every width. -->
+    <a href="#/tasks" class="btn btn-ghost btn-sm w-full justify-start"> کارها </a>
+    <a href="#/members" class="btn btn-ghost btn-sm w-full justify-start"> اعضا </a>
   </section>
 
   <section>

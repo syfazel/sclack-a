@@ -72,10 +72,6 @@
       <div class="flex h-full flex-col items-center justify-center text-center">
         <p class="font-medium">هنوز پیامی نیست</p>
         <p class="mt-1 text-sm opacity-60">اولین پیام این اتاق را بنویسید.</p>
-        <p class="mt-3 max-w-sm text-xs leading-5 opacity-50">
-          پیام‌ها فقط برای خودتان دیده می‌شود تا وقتی سیاست پیام‌ها در فاز D2 به
-          «اعضای اتاق» تغییر کند.
-        </p>
       </div>
     {:else}
       <ul class="flex flex-col gap-2">

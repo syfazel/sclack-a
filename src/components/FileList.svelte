@@ -1,5 +1,5 @@
 <script>
-  import { ws } from '../lib/store.svelte.js'
+  import { auth, ws } from '../lib/store.svelte.js'
   import { memberName } from '../lib/data.js'
   import {
     listFiles,
@@ -20,8 +20,14 @@
   let uploadMsgKind = $state('')
   let uploading = $state(false)
   let busyId = $state(null)
+  // In-app two-step delete confirmation (D6 bug 3): the native confirm()
+  // dialog is not reliably answered in automation / on mobile, so the
+  // first tap arms the button and the second tap deletes.
+  let armDeleteId = $state(null)
 
   const files = $derived(ws.files.filter((f) => f.project_id === projectId))
+  // RLS allows delete only for the uploader (w1 files delete own).
+  const canDelete = (f) => auth.member && f.uploaded_by === auth.member.id
 
   async function doUpload(event) {
     const file = event.target.files?.[0]
@@ -63,10 +69,16 @@
   }
 
   async function doDelete(f) {
-    if (!confirm('فایل «' + f.name + '» حذف شود؟')) return
+    if (armDeleteId !== f.id) {
+      armDeleteId = f.id
+      return
+    }
+    armDeleteId = null
     busyId = f.id
     try {
       await deleteFile(f)
+      uploadMsg = 'فایل «' + f.name + '» حذف شد.'
+      uploadMsgKind = 'ok'
     } catch (e) {
       uploadMsg = e.message || String(e)
       uploadMsgKind = 'error'
@@ -152,13 +164,15 @@
           >
             دانلود
           </button>
-          <button
-            class="btn btn-ghost btn-xs text-error"
-            onclick={() => doDelete(f)}
-            disabled={busyId === f.id}
-          >
-            حذف
-          </button>
+          {#if canDelete(f)}
+            <button
+              class="btn btn-ghost btn-xs {armDeleteId === f.id ? 'btn-error' : 'text-error'}"
+              onclick={() => doDelete(f)}
+              disabled={busyId === f.id}
+            >
+              {armDeleteId === f.id ? 'مطمئنید؟' : 'حذف'}
+            </button>
+          {/if}
         </li>
       {/each}
     </ul>

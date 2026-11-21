@@ -3,7 +3,7 @@
   import { auth, ws } from './lib/store.svelte.js'
   import { sb, isConfigured } from './lib/supabase.js'
   import { ensureMember } from './lib/auth.js'
-  import { loadWorkspace, loadRooms } from './lib/data.js'
+  import { loadWorkspace, loadProjectData } from './lib/data.js'
   import { unsubscribeRoom } from './lib/chat.js'
   import Login from './components/Login.svelte'
   import Sidebar from './components/Sidebar.svelte'
@@ -35,13 +35,37 @@
     hash = location.hash || '#/'
   }
 
-  // Keep the current room in sync with the route.
+  // Keep the current room in sync with the route — and the current
+  // project in sync with the room (D6 bug 5: opening a room of another
+  // project, e.g. after reload on #/room/..., left the sidebar lists
+  // showing the previous project's rows).
   $effect(() => {
     if (route.name === 'room') {
       ws.currentRoomId = route.roomId
-    } else if (route.name !== 'room') {
-      // Leaving a room unsubscribes (ChatView's effect cleanup does it);
-      // nothing else to do here.
+      const r = ws.rooms.find((x) => x.id === route.roomId)
+      if (r && r.project_id && ws.currentProjectId !== r.project_id) {
+        ws.currentProjectId = r.project_id
+        loadProjectData(r.project_id)
+      } else if (!r && sb) {
+        // Deep link: the room is not in the loaded lists yet. Fetch its
+        // row to learn the project, then load that project's lists.
+        const roomId = route.roomId
+        ;(async () => {
+          try {
+            const { data } = await sb
+              .from('rooms')
+              .select('id, project_id')
+              .eq('id', roomId)
+              .single()
+            if (data?.project_id && ws.currentProjectId !== data.project_id) {
+              ws.currentProjectId = data.project_id
+              await loadProjectData(data.project_id)
+            }
+          } catch {
+            // Room row unreadable (RLS / deleted): leave the lists alone.
+          }
+        })()
+      }
     }
   })
 

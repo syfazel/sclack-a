@@ -27,6 +27,8 @@ export async function loadTasks(projectId) {
     .select('*')
     .eq('project_id', projectId)
     .order('created_at')
+  // Stale response (project switched while loading): discard (D6 bug 5).
+  if (ws.currentProjectId !== projectId) return
   if (!error) ws.tasks = data || []
   else ws.error = error.message
 }
@@ -219,39 +221,75 @@ export async function deleteReminder(reminder) {
 // Messages by body, docs by title, files by name, tasks by title/description.
 // Doc content lives in Yjs state, not in a text column, so search covers
 // doc TITLES only — stated honestly in the UI. % and _ are escaped.
+// The files table has NO created_at column (it has uploaded_at) — using
+// created_at in the files query broke the whole search (D6 bug 2).
+// One failing source must not break the whole search: sources run with
+// allSettled, hits from the working sources are returned, and the failed
+// sources are attached as `hits.partialErrors` for the UI to show.
 
 export async function searchWorkspace(query) {
   const q = (query || '').trim()
   if (!q) return []
   const pattern = '%' + escapeSearchPattern(q) + '%'
-  const [msgs, docs, files, tasks] = await Promise.all([
-    sb
-      .from('messages')
-      .select('id, body, created_at, room_id, rooms(name)')
-      .ilike('body', pattern)
-      .order('created_at', { ascending: false })
-      .limit(20),
-    sb
-      .from('docs')
-      .select('id, title, created_at, project_id, projects(name)')
-      .ilike('title', pattern)
-      .order('created_at', { ascending: false })
-      .limit(20),
-    sb
-      .from('files')
-      .select('id, name, created_at, project_id, projects(name)')
-      .ilike('name', pattern)
-      .order('created_at', { ascending: false })
-      .limit(20),
-    sb
-      .from('tasks')
-      .select('id, title, description, created_at, project_id, projects(name)')
-      .or('title.ilike.' + pattern + ',description.ilike.' + pattern)
-      .order('created_at', { ascending: false })
-      .limit(20)
-  ])
+  const sources = [
+    {
+      name: 'پیام‌ها',
+      run: () =>
+        sb
+          .from('messages')
+          .select('id, body, created_at, room_id, rooms(name)')
+          .ilike('body', pattern)
+          .order('created_at', { ascending: false })
+          .limit(20)
+    },
+    {
+      name: 'سندها',
+      run: () =>
+        sb
+          .from('docs')
+          .select('id, title, created_at, project_id, projects(name)')
+          .ilike('title', pattern)
+          .order('created_at', { ascending: false })
+          .limit(20)
+    },
+    {
+      name: 'فایل‌ها',
+      run: () =>
+        sb
+          .from('files')
+          .select('id, name, uploaded_at, project_id, projects(name)')
+          .ilike('name', pattern)
+          .order('uploaded_at', { ascending: false })
+          .limit(20)
+    },
+    {
+      name: 'کارها',
+      run: () =>
+        sb
+          .from('tasks')
+          .select('id, title, description, created_at, project_id, projects(name)')
+          .or('title.ilike.' + pattern + ',description.ilike.' + pattern)
+          .order('created_at', { ascending: false })
+          .limit(20)
+    }
+  ]
+  const settled = await Promise.allSettled(sources.map((s) => s.run()))
   const hits = []
-  for (const m of msgs.data || []) {
+  const partialErrors = []
+  const byName = {}
+  settled.forEach((r, i) => {
+    const src = sources[i]
+    if (r.status === 'fulfilled' && !r.value.error) {
+      byName[src.name] = r.value.data || []
+    } else {
+      const msg =
+        r.status === 'rejected'
+          ? r.reason?.message || String(r.reason)
+          : r.value.error?.message || String(r.value.error)
+      partialErrors.push({ source: src.name, message: msg })
+    }
+  })
+  for (const m of byName['پیام‌ها'] || []) {
     hits.push({
       kind: 'message',
       kindLabel: 'پیام',
@@ -262,7 +300,7 @@ export async function searchWorkspace(query) {
       at: m.created_at
     })
   }
-  for (const d of docs.data || []) {
+  for (const d of byName['سندها'] || []) {
     hits.push({
       kind: 'doc',
       kindLabel: 'سند',
@@ -273,7 +311,7 @@ export async function searchWorkspace(query) {
       at: d.created_at
     })
   }
-  for (const f of files.data || []) {
+  for (const f of byName['فایل‌ها'] || []) {
     hits.push({
       kind: 'file',
       kindLabel: 'فایل',
@@ -281,10 +319,10 @@ export async function searchWorkspace(query) {
       title: f.name,
       place: f.projects?.name || 'پروژه',
       link: '#/',
-      at: f.created_at
+      at: f.uploaded_at
     })
   }
-  for (const t of tasks.data || []) {
+  for (const t of byName['کارها'] || []) {
     hits.push({
       kind: 'task',
       kindLabel: 'کار',
@@ -295,9 +333,13 @@ export async function searchWorkspace(query) {
       at: t.created_at
     })
   }
-  const firstError = [msgs, docs, files, tasks].find((r) => r.error)
-  if (firstError) throw new Error(firstError.error.message)
   hits.sort((a, b) => new Date(b.at) - new Date(a.at))
+  if (partialErrors.length > 0) {
+    // No hits at all: surface the failure loudly (old behaviour).
+    // Partial hits: return them, with the failed sources attached.
+    if (hits.length === 0) throw new Error(partialErrors[0].message)
+    hits.partialErrors = partialErrors
+  }
   return hits
 }
 

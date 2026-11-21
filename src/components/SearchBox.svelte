@@ -5,14 +5,18 @@
   let hits = $state(null) // null = not searched yet
   let searching = $state(false)
   let searchError = $state('')
+  let partialErrors = $state([])
 
   async function doSearch() {
     const query = q.trim()
     if (!query || searching) return
     searching = true
     searchError = ''
+    partialErrors = []
     try {
-      hits = await searchWorkspace(query)
+      const res = await searchWorkspace(query)
+      hits = res
+      partialErrors = res.partialErrors || []
     } catch (e) {
       searchError = e.message || String(e)
       hits = []
@@ -40,6 +44,12 @@
   <p class="mt-1 text-xs opacity-50">جست‌وجو در عنوان سند است، نه در متن آن (متن سند در حالت Yjs ذخیره می‌شود).</p>
   {#if searchError}
     <p class="mt-1 text-xs text-error">{searchError}</p>
+  {/if}
+  {#if partialErrors.length > 0}
+    <p class="mt-1 text-xs text-warning">
+      جست‌وجو در {partialErrors.map((p) => p.source).join(' و ')} کامل نشد؛ نتیجه‌های
+      دیگر نشان داده شده‌اند.
+    </p>
   {/if}
   {#if hits !== null}
     {#if hits.length === 0}

@@ -18,6 +18,8 @@ export async function loadDocs(projectId) {
     .select('*')
     .eq('project_id', projectId)
     .order('created_at')
+  // Stale response (project switched while loading): discard (D6 bug 5).
+  if (ws.currentProjectId !== projectId) return
   if (!error) ws.docs = data || []
   else ws.error = error.message
 }
@@ -213,6 +215,11 @@ export async function listFiles(projectId) {
     .select('*')
     .eq('project_id', projectId)
     .order('uploaded_at', { ascending: false })
+  // Stale response (project switched while loading): discard (D6 bug 5).
+  // FileList components always pass their own project's id, and the
+  // project sync in DocView / the route effect keeps currentProjectId
+  // aligned with the displayed project before they mount.
+  if (ws.currentProjectId !== projectId) return
   if (!error) ws.files = data || []
   else ws.error = error.message
 }
@@ -278,10 +285,28 @@ export async function downloadFile(fileRow) {
 
 export async function deleteFile(fileRow) {
   if (!fileRow?.id) throw new Error('ردیف فایل مشخص نیست.')
-  const { error } = await sb.from('files').delete().eq('id', fileRow.id)
+  // PostgREST DELETE without .select() answers success even when RLS
+  // blocks the delete (0 rows affected) — that silent no-op was D6 bug 3.
+  // Select the deleted row back and treat "0 rows" as a failure.
+  const { data, error } = await sb
+    .from('files')
+    .delete()
+    .eq('id', fileRow.id)
+    .select('id')
   if (error) throw error
+  if (!data || data.length === 0) {
+    throw new Error('فایل حذف نشد — فقط فرستندهٔ فایل می‌تواند آن را حذف کند.')
+  }
+  // Only remove the storage object once the row is really gone.
   if (fileRow.storage_path) {
-    await sb.storage.from(FILES_BUCKET).remove([fileRow.storage_path])
+    const { error: rerr } = await sb.storage
+      .from(FILES_BUCKET)
+      .remove([fileRow.storage_path])
+    if (rerr) {
+      throw new Error(
+        'ردیف فایل حذف شد ولی حذف فایل از انباره ناموفق بود: ' + (rerr.message || String(rerr))
+      )
+    }
   }
   await listFiles(fileRow.project_id)
 }
