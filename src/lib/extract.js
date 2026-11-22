@@ -629,7 +629,294 @@ export function buildRecentActivity(
   }))
 }
 
+// ---------- G6: assistant expansion — 30 top commands ----------
+// Pure helpers for the 24 new G6 commands (the 6 existing commands
+// reuse computeProjectReview / extractRoomSummary / extractDocSummary /
+// extractDocTaskSuggestions / extractChatTaskSuggestions /
+// computeDeadlineGuardian / searchWorkspace). Every function takes
+// rows + an explicit `now` so the sandbox probe can pin the clock.
+// Nothing is invented: a function returns found:false (the caller
+// renders «پیدا نشد») when its input has nothing real.
+
+// #3 (100-list): project deadline — from custom_fields.deadline.
+// `deadline` is a 'YYYY-MM-DD' date string (the P01 A1 date input) or
+// an ISO datetime. daysLeft is the Tehran calendar-day difference
+// (negative when the deadline has passed). tasksDueByDeadline counts
+// unfinished tasks due on or before the deadline day.
+export function projectDeadlineInfo(project, tasks, now = new Date()) {
+  const deadline = project?.custom_fields?.deadline || null
+  if (!deadline) return { found: false, deadline: null, deadlineKey: null, deadlineLabel: null, daysLeft: null, tasksDueByDeadline: 0 }
+  const deadlineKey = String(deadline).length <= 10 ? String(deadline) : tehranDayKey(deadline)
+  const daysLeft = Math.round(
+    (new Date(deadlineKey + 'T12:00:00Z').getTime() -
+      new Date(tehranDayKey(now) + 'T12:00:00Z').getTime()) / DAY_MS
+  )
+  const deadlineEndMs = new Date(deadlineKey + 'T23:59:00+03:30').getTime()
+  const tasksDueByDeadline = (tasks || []).filter(
+    (t) => t.status !== 'done' && t.due_at && new Date(t.due_at).getTime() <= deadlineEndMs
+  ).length
+  return {
+    found: true,
+    deadline,
+    deadlineKey,
+    deadlineLabel: jalaliDayLabel(new Date(deadlineKey + 'T12:00:00+03:30')),
+    daysLeft,
+    tasksDueByDeadline
+  }
+}
+
+// #8 (100-list): suggest closing the project — only when the stage is
+// 'review' AND there is at least one task AND every task is done. A
+// project with no tasks at all is not suggested (nothing proves it is
+// finished); a project in another stage is not suggested either.
+// The suggestion never closes anything by itself — the UI closes only
+// on the user's one tap (closeProject).
+export function suggestProjectClose(project, tasks) {
+  const stage = project?.custom_fields?.stage
+  const list = tasks || []
+  if (stage !== 'review') return { suggested: false, reason: 'stage' }
+  if (list.length === 0) return { suggested: false, reason: 'no-tasks' }
+  const open = list.filter((t) => t.status !== 'done')
+  if (open.length > 0) return { suggested: false, reason: 'open-tasks', openCount: open.length }
+  return { suggested: true, reason: 'all-done', doneCount: list.length }
+}
+
+// #13 (100-list): today's messages (Tehran day), newest first.
+export function todayMessages(messages, now = new Date()) {
+  const todayKey = tehranDayKey(now)
+  return (messages || [])
+    .filter((m) => m.created_at && tehranDayKey(m.created_at) === todayKey)
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+}
+
+// #15 (100-list): unanswered messages — a parent (parent_id empty)
+// that no row answers (no row has parent_id === its id). Oldest first:
+// the longest-waiting unanswered message is the one to catch first.
+export function unansweredMessages(messages) {
+  const list = messages || []
+  const answered = new Set(list.filter((m) => m.parent_id).map((m) => m.parent_id))
+  return list
+    .filter((m) => !m.parent_id && !answered.has(m.id))
+    .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+}
+
+// #23 (100-list): open threads — parents with at least one reply,
+// with the reply count and the last reply. Most recently active first.
+export function openThreads(messages) {
+  const list = messages || []
+  const replies = new Map()
+  for (const m of list) {
+    if (!m.parent_id) continue
+    if (!replies.has(m.parent_id)) replies.set(m.parent_id, [])
+    replies.get(m.parent_id).push(m)
+  }
+  const out = []
+  for (const m of list) {
+    if (m.parent_id) continue
+    const rs = replies.get(m.id)
+    if (!rs || rs.length === 0) continue
+    rs.sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+    out.push({ parent: m, replyCount: rs.length, lastReply: rs[rs.length - 1] })
+  }
+  out.sort((a, b) => new Date(b.lastReply.created_at) - new Date(a.lastReply.created_at))
+  return out
+}
+
+// #25 (100-list): my mentions first — unread mentions before read
+// ones, newest first within each group. Pure filter/sort; the loader
+// (assistant.js) reads the rows from notifications.
+export function mentionsFirst(notifications) {
+  return (notifications || [])
+    .filter((n) => n.type === 'mention')
+    .sort((a, b) =>
+      a.read === b.read
+        ? new Date(b.created_at) - new Date(a.created_at)
+        : a.read
+          ? 1
+          : -1
+    )
+}
+
+// #27 (100-list): group notifications by type (mention / reply /
+// reminder / comment first, then any other type). Only non-empty
+// groups are returned; rows inside a group are newest first.
+const NOTIF_TYPE_LABEL = {
+  mention: 'منشن',
+  reply: 'پاسخ',
+  reminder: 'یادآوری',
+  comment: 'نظر'
+}
+export function groupNotificationsByType(notifications) {
+  const order = ['mention', 'reply', 'reminder', 'comment']
+  const groups = new Map()
+  for (const n of notifications || []) {
+    const t = n.type || 'other'
+    if (!groups.has(t)) groups.set(t, [])
+    groups.get(t).push(n)
+  }
+  const out = []
+  for (const t of order) {
+    const rows = groups.get(t)
+    if (!rows || rows.length === 0) continue
+    rows.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+    out.push({ type: t, label: NOTIF_TYPE_LABEL[t] || t, rows })
+  }
+  for (const [t, rows] of groups) {
+    if (order.includes(t)) continue
+    rows.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+    out.push({ type: t, label: NOTIF_TYPE_LABEL[t] || t, rows })
+  }
+  return out
+}
+
+// #33 (100-list): stale docs — updated_at (falling back to created_at)
+// older than 7×24h. Oldest first.
+export function staleDocs(docs, now = new Date()) {
+  const weekAgoMs = toDate(now).getTime() - 7 * DAY_MS
+  return (docs || [])
+    .filter((d) => {
+      const at = d.updated_at || d.created_at
+      if (!at) return true // no timestamp at all: cannot prove it fresh
+      return new Date(at).getTime() < weekAgoMs
+    })
+    .sort((a, b) => new Date(a.updated_at || a.created_at || 0) - new Date(b.updated_at || b.created_at || 0))
+}
+
+// #41 (100-list): open comments — resolved === false, in row order.
+export function openComments(comments) {
+  return (comments || []).filter((c) => !c.resolved)
+}
+
+// #49 (100-list): fresh files — uploaded in the last 7×24h (the same
+// window as computeProjectReview's "new files"). Newest first.
+export function freshFiles(files, now = new Date()) {
+  const n = toDate(now).getTime()
+  const weekAgoMs = n - 7 * DAY_MS
+  return (files || [])
+    .filter((f) => {
+      if (!f.uploaded_at) return false
+      const ms = new Date(f.uploaded_at).getTime()
+      return ms >= weekAgoMs && ms <= n
+    })
+    .sort((a, b) => new Date(b.uploaded_at) - new Date(a.uploaded_at))
+}
+
+// #54 (100-list): unattached files — attached_to_type is empty.
+// Newest first.
+export function unattachedFiles(files) {
+  return (files || [])
+    .filter((f) => !f.attached_to_type)
+    .sort((a, b) => new Date(b.uploaded_at || 0) - new Date(a.uploaded_at || 0))
+}
+
+// #58 (100-list): my tasks due today (Tehran) — the intersection of
+// the planner's «امروز» and «کارهای من» menus. Done tasks are kept
+// (the planner shows them with their «تمام‌شده» state).
+export function myTodayTasks(tasks, meId, now = new Date()) {
+  const todayKey = tehranDayKey(now)
+  return (tasks || [])
+    .filter((t) => t.assignee_id === meId && t.due_at && tehranDayKey(t.due_at) === todayKey)
+    .sort((a, b) => new Date(a.due_at) - new Date(b.due_at))
+}
+
+// #59 (100-list): overdue tasks — the existing isOverdueTask rule,
+// sorted by due date (most overdue first).
+export function overdueTasks(tasks, now = new Date()) {
+  return (tasks || [])
+    .filter((t) => isOverdueTask(t, now))
+    .sort((a, b) => new Date(a.due_at) - new Date(b.due_at))
+}
+
+// #63 (100-list): undated unfinished tasks — they never appear in
+// today/week/month and are invisible in every planner menu.
+export function undatedTasks(tasks) {
+  return (tasks || [])
+    .filter((t) => t.status !== 'done' && !t.due_at)
+    .sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0))
+}
+
+// #64 (100-list): unassigned unfinished tasks. Oldest first.
+export function unassignedTasks(tasks) {
+  return (tasks || [])
+    .filter((t) => t.status !== 'done' && !t.assignee_id)
+    .sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0))
+}
+
+// #71 (100-list): my reminders due today (Tehran) and not done.
+export function todayReminders(reminders, now = new Date()) {
+  const todayKey = tehranDayKey(now)
+  return (reminders || [])
+    .filter((r) => !r.done && r.remind_at && tehranDayKey(r.remind_at) === todayKey)
+    .sort((a, b) => new Date(a.remind_at) - new Date(b.remind_at))
+}
+
+// #72 (100-list): my overdue reminders — remind_at past and not done
+// (the same rule as isOverdue in work.js). Earliest first.
+export function overdueReminders(reminders, now = new Date()) {
+  const n = toDate(now).getTime()
+  return (reminders || [])
+    .filter((r) => !r.done && r.remind_at && new Date(r.remind_at).getTime() < n)
+    .sort((a, b) => new Date(a.remind_at) - new Date(b.remind_at))
+}
+
+// #84 (100-list): search inside doc text — pure matching over
+// [{ docId, title, text }] (the loader decodes the Yjs base64 with
+// textFromStateB64). Lines containing the word, verbatim, up to 5 per
+// doc; docs without the word are not returned.
+export function searchDocLines(docsWithText, word) {
+  const q = String(word || '').trim()
+  if (!q) return []
+  const out = []
+  for (const d of docsWithText || []) {
+    const lines = splitLines(d.text).filter((l) => l.includes(q))
+    if (lines.length === 0) continue
+    out.push({ docId: d.docId, title: d.title, lines: lines.slice(0, 5), total: lines.length })
+  }
+  return out
+}
+
+// #95 (100-list): last activity per member — the newest row of each
+// member across messages (author), docs (creator, updated_at),
+// tasks (creator or assignee, completed_at or created_at) and files
+// (uploader). A member with no row at all gets activity: null.
+// Honest limit: a doc's activity is attributed to its creator — the
+// docs row carries no "last edited by" member.
+export function lastActivityByMember({ messages = [], docs = [], tasks = [], files = [] }, members = []) {
+  const out = []
+  for (const m of members || []) {
+    let best = null
+    const consider = (kind, at, label) => {
+      if (!at) return
+      const ms = new Date(at).getTime()
+      if (Number.isNaN(ms)) return
+      if (!best || ms > best.ms) best = { kind, at, ms, label }
+    }
+    for (const msg of messages || []) {
+      if (msg.author_id === m.id) consider('message', msg.created_at, 'پیام')
+    }
+    for (const d of docs || []) {
+      if (d.created_by === m.id) consider('doc', d.updated_at || d.created_at, 'سند «' + d.title + '»')
+    }
+    for (const t of tasks || []) {
+      if (t.created_by === m.id || t.assignee_id === m.id) {
+        consider('task', t.completed_at || t.created_at, 'کار «' + t.title + '»')
+      }
+    }
+    for (const f of files || []) {
+      if (f.uploaded_by === m.id) consider('file', f.uploaded_at, 'فایل «' + f.name + '»')
+    }
+    out.push({
+      memberId: m.id,
+      name: m.name,
+      username: m.username,
+      activity: best ? { kind: best.kind, at: best.at, label: best.label } : null
+    })
+  }
+  return out
+}
+
 // ---------- P01 block D: Muse AI — deadline guardian + chat-to-task ----------
+
 // Both features are EXTRACTIVE-ONLY: they quote and point at real rows,
 // never invent content. `now` is passed in so the sandbox probe can pin
 // the clock. The guardian buckets are disjoint and cover unfinished

@@ -400,7 +400,9 @@ export async function loadTeamPulseData() {
     const [messages, tasks, docs, files, versions, rooms] = await Promise.all([
       sb
         .from('messages')
-        .select('id, created_at, room_id, author_id')
+        // body is selected too: G6 #13/#15/#23 render the message body
+        // as the row title (the pulse counts never needed it).
+        .select('id, created_at, room_id, author_id, body')
         .order('created_at', { ascending: false })
         .limit(500),
       sb

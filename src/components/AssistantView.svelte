@@ -8,11 +8,130 @@
     suggestTasksFromChat,
     loadDeadlineGuardian,
     createTaskFromSuggestion,
-    askWorkspace
+    askWorkspace,
+    projectStatus,
+    projectDeadline,
+    suggestCloseProject,
+    closeProjectFromSuggestion,
+    listTodayMessages,
+    listUnansweredMessages,
+    listOpenThreads,
+    loadMyMentions,
+    loadUnreadNotifications,
+    listStaleDocs,
+    listOpenComments,
+    listDocVersions,
+    listFreshFiles,
+    listUnattachedFiles,
+    listMyTodayTasks,
+    listOverdueTasks,
+    listUndatedTasks,
+    listUnassignedTasks,
+    listTodayReminders,
+    listOverdueReminders,
+    searchDocsText,
+    loadTeamPulseToday,
+    loadDailyReport,
+    lastActivity,
+    listDocTemplates,
+    createDocFromTemplate
   } from '../lib/assistant.js'
 
   function fmtDue(iso) {
     return iso ? new Date(iso).toLocaleDateString('fa-IR') : '—'
+  }
+
+  // --- G6: 24 new commands (the other 6 of the top 30 — room summary,
+  // chat-to-task, doc summary, doc task suggestions, deadline guardian,
+  // ask workspace — already have their sections above) ---
+  // One shared project / doc / word input; each command card has its
+  // own run button (data-g6-run) and result area (data-g6-cmd).
+  let g6ProjectId = $state('')
+  let g6DocId = $state('')
+  let g6Word = $state('')
+  let g6 = $state({}) // n -> { busy, error, result }
+  let g6Closed = $state(false) // #8: project closed by the one tap
+  let g6CreatedTemplates = $state({}) // template id -> true (#99 tap)
+
+  $effect(() => {
+    if (!g6ProjectId && ws.currentProjectId) g6ProjectId = ws.currentProjectId
+  })
+
+  // n = the number in the 100-command list (g6-tafsil.md).
+  const G6_COMMANDS = [
+    { n: 1, title: 'وضعیت پروژه', desc: 'کارهای باز / در حال انجام / تمام‌شده، عقب‌مانده، سندها، فایل‌های تازه.', scope: 'project', run: (pid) => projectStatus(pid) },
+    { n: 3, title: 'مهلت پروژه', desc: 'مهلت پروژه، روزهای مانده و کارهای ناتمام تا مهلت.', scope: 'project', run: (pid) => projectDeadline(pid) },
+    { n: 8, title: 'پیشنهاد بستن پروژه', desc: 'وقتی همهٔ کارها تمام شده‌اند و پروژه در بازبینی است، بستن را پیشنهاد می‌دهد — بستن فقط با یک تپ شما.', scope: 'project', run: (pid) => suggestCloseProject(pid) },
+    { n: 13, title: 'پیام‌های امروز', desc: 'پیام‌های امروز تهران در همهٔ اتاق‌ها، تازه‌ترین اول.', scope: 'none', run: () => listTodayMessages() },
+    { n: 15, title: 'پیام‌های بی‌پاسخ', desc: 'پیام‌هایی که هیچ پاسخی نگرفته‌اند — قدیمی‌ترین اول.', scope: 'project', run: (pid) => listUnansweredMessages(pid) },
+    { n: 23, title: 'تردهای باز', desc: 'بحث‌هایی که پاسخ دارند، با شمار پاسخ‌ها و آخرین پاسخ.', scope: 'project', run: (pid) => listOpenThreads(pid) },
+    { n: 25, title: 'منشن‌های من', desc: 'منشن‌های من، خوانده‌نشده اول — فقط اتاق و فرستنده، بدون متن پیام.', scope: 'none', run: () => loadMyMentions() },
+    { n: 27, title: 'اعلان‌های خوانده‌نشده', desc: 'اعلان‌های خوانده‌نشدهٔ من، دسته‌بندی‌شده بر اساس نوع.', scope: 'none', run: () => loadUnreadNotifications() },
+    { n: 33, title: 'سندهای بدون تغییر', desc: 'سندهایی که ۷ روز یا بیشتر ویرایش نشده‌اند.', scope: 'project', run: (pid) => listStaleDocs(pid) },
+    { n: 41, title: 'نظرهای باز یک سند', desc: 'نظرهای حل‌نشدهٔ سند با نقل عین متن و لنگر.', scope: 'doc', run: (pid, docId) => listOpenComments(docId) },
+    { n: 45, title: 'نسخه‌های یک سند', desc: 'فهرست نسخه‌ها با شماره، نویسنده، یادداشت و زمان.', scope: 'doc', run: (pid, docId) => listDocVersions(docId) },
+    { n: 49, title: 'فایل‌های تازه', desc: 'فایل‌های ۷ روز اخیر با اندازه و فرستنده.', scope: 'project', run: (pid) => listFreshFiles(pid) },
+    { n: 54, title: 'فایل‌های بی‌وصل', desc: 'فایل‌هایی که آپلود شده‌اند ولی به هیچ کار/سند/اتاقی وصل نیستند.', scope: 'project', run: (pid) => listUnattachedFiles(pid) },
+    { n: 58, title: 'کارهای امروز من', desc: 'کارهای سپرده‌شده به من با سررسید امروز تهران.', scope: 'project', run: (pid) => listMyTodayTasks(pid) },
+    { n: 59, title: 'کارهای عقب‌مانده', desc: 'کارهای ناتمام با سررسید گذشته، عقب‌مانده‌ترین اول.', scope: 'project', run: (pid) => listOverdueTasks(pid) },
+    { n: 63, title: 'کارهای بدون سررسید', desc: 'کارهای ناتمام بدون تاریخ سررسید — در هیچ منویی دیده نمی‌شوند.', scope: 'project', run: (pid) => listUndatedTasks(pid) },
+    { n: 64, title: 'کارهای بدون مسئول', desc: 'کارهای ناتمام بدون مسئول.', scope: 'project', run: (pid) => listUnassignedTasks(pid) },
+    { n: 71, title: 'یادآوری‌های امروز من', desc: 'یادآوری‌های من با سررسید امروز تهران.', scope: 'none', run: () => listTodayReminders() },
+    { n: 72, title: 'یادآوری‌های عقب‌مانده', desc: 'یادآوری‌های من با سررسید گذشته و انجام‌نشده.', scope: 'none', run: () => listOverdueReminders() },
+    { n: 84, title: 'جست‌وجو در متن سندها', desc: 'خط‌هایی از متن واقعی سندها که واژه را دارند، با نقل عین خط.', scope: 'project-word', run: (pid, docId, word) => searchDocsText(pid, word) },
+    { n: 85, title: 'نبض تیم امروز', desc: 'چهار عدد نبض: پیام‌های امروز، کارهای تمام‌شدهٔ این هفته، سندهای فعال، فایل‌های تازه.', scope: 'none', run: () => loadTeamPulseToday() },
+    { n: 92, title: 'گزارش روزانهٔ تیم', desc: 'مهلت‌ها + نبض + منشن‌های خوانده‌نشدهٔ من — شروع روز با یک گزارش.', scope: 'project', run: (pid) => loadDailyReport(pid) },
+    { n: 95, title: 'آخرین فعالیت هر عضو', desc: 'تازه‌ترین فعالیت هر عضو — آخرین بار کی فعال بود؟', scope: 'none', run: () => lastActivity() },
+    { n: 99, title: 'پیشنهاد قالب برای سند تازه', desc: 'قالب‌های سند — ساخت سند از قالب فقط با یک تپ شما.', scope: 'none', run: () => listDocTemplates() }
+  ]
+
+  async function runG6(cmd) {
+    const pid = g6ProjectId || ws.currentProjectId
+    const needProject = cmd.scope === 'project' || cmd.scope === 'project-word'
+    if (needProject && !pid) {
+      g6 = { ...g6, [cmd.n]: { busy: false, error: 'پروژه انتخاب نشده است.', result: null } }
+      return
+    }
+    if (cmd.scope === 'doc' && !g6DocId) {
+      g6 = { ...g6, [cmd.n]: { busy: false, error: 'سند انتخاب نشده است.', result: null } }
+      return
+    }
+    if (cmd.scope === 'project-word' && !g6Word.trim()) {
+      g6 = { ...g6, [cmd.n]: { busy: false, error: 'واژه‌ای برای جست‌وجو بنویسید.', result: null } }
+      return
+    }
+    if (g6[cmd.n]?.busy) return
+    g6 = { ...g6, [cmd.n]: { busy: true, error: '', result: null } }
+    try {
+      const result = await cmd.run(pid, g6DocId, g6Word.trim())
+      g6 = { ...g6, [cmd.n]: { busy: false, error: '', result } }
+    } catch (e) {
+      g6 = { ...g6, [cmd.n]: { busy: false, error: e.message || String(e), result: null } }
+    }
+  }
+
+  async function doCloseG6(result) {
+    if (!result?.project || g6Closed) return
+    try {
+      await closeProjectFromSuggestion(result.project)
+      g6Closed = true
+    } catch (e) {
+      g6 = { ...g6, [8]: { busy: false, error: e.message || String(e), result } }
+    }
+  }
+
+  async function doCreateTemplateDoc(t) {
+    const pid = g6ProjectId || ws.currentProjectId
+    if (!pid || g6CreatedTemplates[t.id]) return
+    try {
+      await createDocFromTemplate(t, pid)
+      g6CreatedTemplates = { ...g6CreatedTemplates, [t.id]: true }
+    } catch (e) {
+      g6 = {
+        ...g6,
+        [99]: { busy: false, error: e.message || String(e), result: g6[99]?.result || null }
+      }
+    }
   }
 
   // --- deadline guardian (P01 D1) ---
@@ -483,6 +602,160 @@
             </ul>
           {/if}
         {/if}
+      </section>
+
+      <!-- G6: 24 new commands (top 30) -->
+      <section class="mt-6" data-g6-area>
+        <h2 class="ai-title mb-2 text-lg font-bold">دستورهای تازهٔ دستیار (G6)</h2>
+        <p class="mb-2 text-xs opacity-60">
+          ۲۴ دستور تازه از ۳۰ دستور برتر؛ ۶ دستور دیگر (خلاصهٔ اتاق، تبدیل چت به کار،
+          خلاصهٔ سند، پیشنهاد کار از سند، نگهبان مهلت‌ها، سؤال دربارهٔ فضای کاری)
+          همین بالا در پنل هستند. همه فقط از ردیف‌های واقعی نقل یا شمارش می‌کنند؛
+          وقتی چیزی نیست، «پیدا نشد» می‌گویند و هیچ‌چیز خودبه‌خود ساخته نمی‌شود.
+        </p>
+        <div class="flex flex-col gap-2 md:flex-row">
+          <select
+            class="select select-bordered input-sclack min-w-0 flex-1 bg-base-100"
+            data-g6-project
+            bind:value={g6ProjectId}
+          >
+            <option value="">پروژه را انتخاب کنید</option>
+            {#each ws.projects as p (p.id)}
+              <option value={p.id}>{p.name}</option>
+            {/each}
+          </select>
+          <select
+            class="select select-bordered input-sclack min-w-0 flex-1 bg-base-100"
+            data-g6-doc
+            bind:value={g6DocId}
+          >
+            <option value="">سند را انتخاب کنید</option>
+            {#each ws.docs as d (d.id)}
+              <option value={d.id}>{d.title}</option>
+            {/each}
+          </select>
+          <input
+            class="input input-bordered input-sclack min-w-0 flex-1 bg-base-100"
+            data-g6-word
+            placeholder="واژه برای جست‌وجو در متن سندها"
+            bind:value={g6Word}
+          />
+        </div>
+        {#each G6_COMMANDS as cmd (cmd.n)}
+          <div class="mt-4" data-g6-cmd={cmd.n}>
+            <h3 class="font-bold">{cmd.title}</h3>
+            <p class="text-xs opacity-60">{cmd.desc}</p>
+            <button
+              class="btn btn-ai btn-sm mt-2"
+              data-g6-run={cmd.n}
+              onclick={() => runG6(cmd)}
+              disabled={g6[cmd.n]?.busy}
+            >
+              اجرا
+            </button>
+            {#if g6[cmd.n]?.error}
+              <p class="mt-2 text-xs text-error">{g6[cmd.n].error}</p>
+            {/if}
+            {#if g6[cmd.n]?.result}
+              {@const r = g6[cmd.n].result}
+              {#if r.groups}
+                {#if !r.found}
+                  <p class="mt-2 text-sm opacity-60">چیزی پیدا نشد.</p>
+                {:else}
+                  {#each r.groups as gr}
+                    <h4 class="mt-3 font-bold">{gr.label} ({gr.rows.length})</h4>
+                    <ul class="mt-1 flex flex-col gap-1">
+                      {#each gr.rows as row (row.id)}
+                        <li data-g6-row={row.id} class="rounded-xl bg-base-100 px-3 py-2 text-sm">
+                          <a href={row.link} class="font-bold hover:underline">{row.title}</a>
+                          {#if row.sub}
+                            <span class="block text-xs opacity-60">{row.sub}</span>
+                          {/if}
+                        </li>
+                      {/each}
+                    </ul>
+                  {/each}
+                {/if}
+              {:else if r.sections}
+                {#if !r.found}
+                  <p class="mt-2 text-sm opacity-60">برای امروز کاری نیست — چیزی پیدا نشد.</p>
+                {:else}
+                  {#each r.sections as sec}
+                    <h4 class="mt-3 font-bold">{sec.title}</h4>
+                    {#if sec.rows.length === 0}
+                      <p class="mt-1 text-sm opacity-60">—</p>
+                    {:else}
+                      <ul class="mt-1 flex flex-col gap-1">
+                        {#each sec.rows as row (row.id + '-' + row.title)}
+                          <li data-g6-row={row.id} class="rounded-xl bg-base-100 px-3 py-2 text-sm">
+                            {#if row.link}
+                              <a href={row.link} class="font-bold hover:underline">{row.title}</a>
+                            {:else}
+                              <span class="font-bold">{row.title}</span>
+                            {/if}
+                            {#if row.sub}
+                              <span class="block text-xs opacity-60">{row.sub}</span>
+                            {/if}
+                          </li>
+                        {/each}
+                      </ul>
+                    {/if}
+                  {/each}
+                {/if}
+              {:else if r.templates}
+                {#if !r.found}
+                  <p class="mt-2 text-sm opacity-60">قالب سندی پیدا نشد.</p>
+                {:else}
+                  <ul class="mt-2 flex flex-col gap-2">
+                    {#each r.templates as t (t.id)}
+                      <li data-g6-template={t.id} class="rounded-xl bg-base-100 p-3 text-sm">
+                        <p class="font-bold">{t.name}</p>
+                        <p class="mt-1 text-xs opacity-60">پیشنهاد — هنوز ساخته نشده</p>
+                        <button
+                          class="btn btn-ai btn-sm mt-2"
+                          onclick={() => doCreateTemplateDoc(t)}
+                          disabled={!!g6CreatedTemplates[t.id]}
+                        >
+                          {g6CreatedTemplates[t.id] ? 'ساخته شد' : 'ساختن سند'}
+                        </button>
+                      </li>
+                    {/each}
+                  </ul>
+                {/if}
+              {:else}
+                {#if !r.found}
+                  <p class="mt-2 text-sm opacity-60">چیزی پیدا نشد.</p>
+                {:else}
+                  <ul class="mt-2 flex flex-col gap-1">
+                    {#each r.rows as row (row.id)}
+                      <li data-g6-row={row.id} class="rounded-xl bg-base-100 px-3 py-2 text-sm">
+                        {#if row.link}
+                          <a href={row.link} class="font-bold hover:underline">{row.title}</a>
+                        {:else}
+                          <span class="font-bold">{row.title}</span>
+                        {/if}
+                        {#if row.sub}
+                          <span class="block text-xs opacity-60">{row.sub}</span>
+                        {/if}
+                      </li>
+                    {/each}
+                  </ul>
+                  {#if cmd.n === 8}
+                    <p class="mt-2 text-xs opacity-60">پیشنهاد — هنوز بسته نشده</p>
+                    <button
+                      class="btn btn-ai btn-sm mt-2"
+                      data-g6-close={r.project.id}
+                      onclick={() => doCloseG6(r)}
+                      disabled={g6Closed}
+                    >
+                      {g6Closed ? 'بسته شد' : 'بستن پروژه'}
+                    </button>
+                  {/if}
+                {/if}
+              {/if}
+            {/if}
+          </div>
+        {/each}
       </section>
 
       <!-- integrations -->
