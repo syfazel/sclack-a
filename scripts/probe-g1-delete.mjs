@@ -6,6 +6,22 @@
 // pre-check that refuses when a child cannot go), and the BLOCKED doc
 // delete (no control exists — versions are immutable, see below).
 //
+// Live findings fixed here (2026-11-22):
+//  * Finding 1 — the delete button on a freshly sent message: the probe
+//    sends one through the UI and asserts the button is there at once,
+//    no reload. (In the live test it did not show until reload; the
+//    bundle check below plus this mount check pin the behaviour.)
+//  * Finding 2 — live delete propagation: the probe mounts TWO clients
+//    on the same room (A = yasin, B = Zahra) sharing one stub DB. A
+//    deletes through the UI; the DELETE event is then delivered to B's
+//    socket the way the Realtime server would, and B's list must lose
+//    the message without reload. The socket is faked (FakeRealtimeSocket
+//    in mountApp): it speaks just enough Phoenix for supabase-js to
+//    join — join replies echo the client's postgres_changes filters
+//    back with server ids — and deliverPostgresChange pushes a change
+//    event. The real server is the only bridge between two browser
+//    profiles, so this is the honest sandbox stand-in for it.
+//
 // Unlike probe-p01-a..d, this stub models the real DELETE rules:
 //  * RLS delete is owner-only per table (w1/d2/d4); versions and members
 //    have NO delete policy at all, so a delete always matches 0 rows.
@@ -435,15 +451,110 @@ async function mountApp({ html, js }, stub, hash, session = fakeSession()) {
   if (!w.Headers) w.Headers = Headers
   if (!w.Request) w.Request = Request
   if (!w.Response) w.Response = Response
-  if (!w.BroadcastChannel && typeof BroadcastChannel !== 'undefined') w.BroadcastChannel = BroadcastChannel
-  if (!w.WebSocket) {
-    w.WebSocket = class {
-      constructor() { this.readyState = 0 }
-      addEventListener() {}
-      removeEventListener() {}
-      send() {}
-      close() {}
+  // Per-window BroadcastChannel (probe only): the real BroadcastChannel
+  // is shared across jsdom windows of the same origin — and gotrue uses
+  // one (named by the storage key) to sync auth state across tabs, so
+  // two probe windows signed in as different users would adopt each
+  // other's session (correct multi-tab behaviour in a real browser,
+  // where two profiles have separate channels — but the probe's two
+  // windows are meant to be two PROFILES). This local bus delivers only
+  // inside the same window, which keeps the two clients isolated while
+  // preserving in-window behaviour (Yjs doc sync, gotrue's listeners).
+  if (!w.__bcBus) w.__bcBus = new Map() // name -> Set of channels
+  const bcBus = w.__bcBus
+  w.BroadcastChannel = class LocalBroadcastChannel {
+    constructor(name) {
+      this.name = name
+      this.onmessage = null
+      this._listeners = new Set()
+      if (!bcBus.has(name)) bcBus.set(name, new Set())
+      bcBus.get(name).add(this)
     }
+    postMessage(data) {
+      for (const peer of [...(bcBus.get(this.name) || [])]) {
+        if (peer === this) continue // a sender never receives its own post
+        setTimeout(() => {
+          if (peer.onmessage) peer.onmessage({ data })
+          for (const fn of peer._listeners) fn({ data })
+        }, 0)
+      }
+    }
+    addEventListener(type, fn) {
+      if (type === 'message') this._listeners.add(fn)
+    }
+    removeEventListener(type, fn) {
+      if (type === 'message') this._listeners.delete(fn)
+    }
+    close() {
+      bcBus.get(this.name)?.delete(this)
+    }
+  }
+  if (!w.__probeSockets) w.__probeSockets = []
+  const probeSockets = w.__probeSockets
+  // Fake Phoenix/Realtime socket (probe only): speaks just enough of the
+  // Phoenix wire protocol for supabase-js to join a channel and receive
+  // postgres_changes. Join replies echo the client's own filters back
+  // with server ids; deliverPostgresChange pushes a change the way the
+  // real server would. The real server is the only bridge between two
+  // browser profiles, so this is the honest sandbox stand-in for it.
+  w.WebSocket = class FakeRealtimeSocket {
+    static CONNECTING = 0
+    static OPEN = 1
+    static CLOSING = 2
+    static CLOSED = 3
+    constructor(url) {
+      this.url = url
+      this.readyState = 0
+      this.binaryType = 'arraybuffer'
+      this.topics = new Set()
+      this.postgresBindings = [] // [{id, event, schema, table, filter}]
+      this.onopen = null
+      this.onmessage = null
+      this.onclose = null
+      this.onerror = null
+      probeSockets.push(this)
+      setTimeout(() => {
+        this.readyState = 1
+        if (this.onopen) this.onopen()
+      }, 0)
+    }
+    addEventListener() {}
+    removeEventListener() {}
+    send(data) {
+      // Phoenix JSON messages are ARRAYS: [join_ref, ref, topic, event, payload].
+      let arr
+      try { arr = JSON.parse(data) } catch { return }
+      if (!Array.isArray(arr)) return
+      const [join_ref, ref, topic, event, payload] = arr
+      if (event === 'phx_join' && topic) {
+        this.topics.add(topic)
+        const filters = payload?.config?.postgres_changes || []
+        this.postgresBindings = filters.map((f, i) => ({ ...f, id: i + 1 }))
+        this._reply(join_ref, ref, topic, {
+          status: 'ok',
+          response: { postgres_changes: this.postgresBindings }
+        })
+        return
+      }
+      // Heartbeat / presence / broadcast pushes: ack so the client
+      // never times out waiting for a reply.
+      if (ref) this._reply(join_ref, ref, topic, { status: 'ok', response: {} })
+    }
+    _reply(join_ref, ref, topic, payload) {
+      setTimeout(() => {
+        if (this.onmessage) {
+          this.onmessage({ data: JSON.stringify([join_ref, ref, topic, 'phx_reply', payload]) })
+        }
+      }, 0)
+    }
+    deliver(msg) {
+      // msg is a {topic, event, payload, ref?} object; encode it the
+      // way the server would.
+      if (this.onmessage) {
+        this.onmessage({ data: JSON.stringify([null, msg.ref || null, msg.topic, msg.event, msg.payload]) })
+      }
+    }
+    close() { this.readyState = 3 }
   }
   w.fetch = stub.stubFetch
   w.confirm = () => true
@@ -479,6 +590,71 @@ async function waitFor(w, fn, timeoutMs = 10000, label = 'condition') {
 }
 
 function norm(s) { return (s || '').replace(/\s+/g, ' ').trim() }
+function setInput(w, el, value) {
+  el.value = value
+  el.dispatchEvent(new w.Event('input', { bubbles: true }))
+}
+function clickButton(w, label) {
+  const btn = [...w.document.querySelectorAll('button')].find(
+    (b) => b.textContent.trim() === label
+  )
+  if (!btn) throw new Error('button not found: ' + label)
+  btn.click()
+  return btn
+}
+function chatInput(w) {
+  return w.document.querySelector('input[placeholder*="پیام بنویسید"]')
+}
+
+// ---------- fake Realtime delivery ----------
+// Find the fake socket that joined the room channel in window w.
+function socketFor(w, roomId) {
+  const topic = 'realtime:room-' + roomId
+  return (w.__probeSockets || []).find((s) => s.topics.has(topic)) || null
+}
+async function waitForSocket(w, roomId, label) {
+  return waitFor(w, () => {
+    const s = socketFor(w, roomId)
+    return s && s.postgresBindings.length > 0 ? s : null
+  }, 10000, label || 'realtime socket joined for room ' + roomId)
+}
+// Push a postgres_changes event into window w the way the Realtime
+// server would: the binding id is the one the join reply assigned to
+// that event type (INSERT first, DELETE second in chat.js).
+function deliverPostgresChange(w, roomId, { type, record, oldRecord }) {
+  const s = socketFor(w, roomId)
+  if (!s) throw new Error('no realtime socket for room ' + roomId)
+  const binding = s.postgresBindings.find((b) => b.event === type)
+  if (!binding) throw new Error('no ' + type + ' postgres binding on the channel')
+  const columns = [
+    { name: 'id', type: 'uuid' },
+    { name: 'room_id', type: 'uuid' },
+    { name: 'author_id', type: 'uuid' },
+    { name: 'body', type: 'text' },
+    { name: 'parent_id', type: 'uuid' },
+    { name: 'mentions', type: 'jsonb' },
+    { name: 'visibility', type: 'text' },
+    { name: 'created_at', type: 'timestamptz' }
+  ]
+  s.deliver({
+    topic: 'realtime:room-' + roomId,
+    event: 'postgres_changes',
+    payload: {
+      data: {
+        schema: 'public',
+        table: 'messages',
+        commit_timestamp: new Date().toISOString(),
+        type,
+        columns,
+        record: record || null,
+        old_record: oldRecord || null,
+        errors: null
+      },
+      ids: [binding.id]
+    },
+    ref: 'probe-' + Date.now()
+  })
+}
 
 // ---------- main ----------
 async function main() {
@@ -555,6 +731,16 @@ async function main() {
     'messages=' + db.messages.length + ' notifications=' + db.notifications.length)
   check('msg-delete: after the failed delete the button is back to «حذف»',
     !!msgDeleteBtn(w1, 'پیام والد من') && msgDeleteBtn(w1, 'پیام والد من').textContent.trim() === 'حذف')
+
+  // Finding 1 (live, 2026-11-22): the delete button did not show on a
+  // freshly sent message until the room was reloaded. Send one through
+  // the UI and assert the button is there immediately, no reload.
+  setInput(w1, chatInput(w1), 'پیام تازهٔ پروب حذف')
+  await sleep(200)
+  clickButton(w1, 'فرستادن')
+  await waitFor(w1, () => msgVisible(w1, 'پیام تازهٔ پروب حذف'), 10000, 'sent message renders')
+  check('msg-delete: delete button exists on the message I JUST sent (no reload)',
+    !!msgDeleteBtn(w1, 'پیام تازهٔ پروب حذف'))
   m1.dom.window.close()
 
   // ---- mount 2: home — project delete ----
@@ -657,6 +843,82 @@ async function main() {
   check('doc-delete: NO «حذف سند» button exists on the doc page',
     ![...w3.document.querySelectorAll('button')].some((b) => b.textContent.trim() === 'حذف سند' || b.getAttribute('title') === 'حذف سند'))
   m3.dom.window.close()
+
+  // ---- mount 4: two clients — live delete propagation (finding 2) ----
+  // Client A (yasin) and client B (Zahra) share one stub DB and one
+  // room. A deletes through the UI; the server broadcast is faked by
+  // delivering the DELETE event to B's socket — the real server is the
+  // only bridge between two browser profiles, so this is the honest
+  // sandbox stand-in for it.
+  const db4 = makeDb()
+  const stub4 = makeStub(db4)
+  const mA = await mountApp({ html, js }, stub4, '#/room/' + R1, fakeSession())
+  const wA = mA.w
+  allErrors.push(...mA.errors)
+  const mB = await mountApp({ html, js }, stub4, '#/room/' + R1, fakeSession(ZAHRA_USER_ID, 'zahra@probe.test'))
+  const wB = mB.w
+  allErrors.push(...mB.errors)
+  await waitFor(wA, () => wA.document.body.textContent.includes('پیام والد من'), 10000, 'client A renders the room')
+  await waitFor(wB, () => wB.document.body.textContent.includes('پیام والد من'), 10000, 'client B renders the room')
+  await waitForSocket(wB, R1, 'client B realtime join')
+  check('live-delete: client B sees the parent message', msgVisible(wB, 'پیام والد من'))
+  check('live-delete: client B sees my reply', msgVisible(wB, 'پاسخ من به والد'))
+  check('live-delete: client B has the DELETE binding subscribed',
+    (socketFor(wB, R1)?.postgresBindings || []).some((b) => b.event === 'DELETE'))
+
+  // The two windows must stay two different users: gotrue syncs auth
+  // across tabs via BroadcastChannel, so a shared channel would swap
+  // their sessions (see the per-window bus in mountApp).
+  const signedInName = (w) => norm(w.document.body.textContent).match(/([^\s]+) \(شما\)/)?.[1] || null
+  check('live-delete: client A is signed in as yasin', signedInName(wA) === 'yasin')
+  check('live-delete: client B is signed in as Zahra', signedInName(wB) === 'زهرا')
+  // A deletes its own reply msg-2 through the UI (two taps).
+  await waitFor(wA, () => msgDeleteBtn(wA, 'پاسخ من به والد'), 10000, 'A’s reply has a delete button')
+  msgDeleteBtn(wA, 'پاسخ من به والد').click()
+  await sleep(300)
+  await waitFor(wA, () => {
+    const b = msgDeleteBtn(wA, 'پاسخ من به والد')
+    return b && b.textContent.trim() === 'مطمئنید؟' ? b : null
+  }, 10000, 'A’s delete button arms')
+  msgDeleteBtn(wA, 'پاسخ من به والد').click()
+  await waitFor(wA, () => !db4.messages.some((m) => m.id === 'msg-2'), 10000, 'A’s delete removes the row from the stub DB')
+  check('live-delete: A’s delete removes the row', !db4.messages.some((m) => m.id === 'msg-2'))
+  await sleep(400)
+  check('live-delete: A’s own list loses the reply', !msgVisible(wA, 'پاسخ من به والد'))
+  check('live-delete: before the event, B still shows the reply', msgVisible(wB, 'پاسخ من به والد'))
+  // The server broadcasts the DELETE — deliver it to B.
+  deliverPostgresChange(wB, R1, { type: 'DELETE', oldRecord: { id: 'msg-2' } })
+  await waitFor(wB, () => !msgVisible(wB, 'پاسخ من به والد'), 10000, 'B’s list loses the deleted reply')
+  check('live-delete: the DELETE event removes the reply from B’s list', !msgVisible(wB, 'پاسخ من به والد'))
+  check('live-delete: the parent is still in B’s list', msgVisible(wB, 'پیام والد من'))
+  // Live arrival still works: an INSERT event adds a message to B’s list.
+  deliverPostgresChange(wB, R1, {
+    type: 'INSERT',
+    record: {
+      id: 'msg-live-1', room_id: R1, author_id: MEMBER_ID, body: 'پیام زندهٔ تازه',
+      parent_id: null, mentions: '[]', visibility: 'project',
+      created_at: new Date().toISOString()
+    }
+  })
+  await waitFor(wB, () => msgVisible(wB, 'پیام زندهٔ تازه'), 10000, 'B’s list gains the live message')
+  check('live-delete: the INSERT event adds the message to B’s list', msgVisible(wB, 'پیام زندهٔ تازه'))
+  check('live-delete: the INSERT delivered only to B does NOT appear in A’s list',
+    !msgVisible(wA, 'پیام زندهٔ تازه'))
+  // And its DELETE removes it again.
+  deliverPostgresChange(wB, R1, { type: 'DELETE', oldRecord: { id: 'msg-live-1' } })
+  await waitFor(wB, () => !msgVisible(wB, 'پیام زندهٔ تازه'), 10000, 'B’s list loses the live message again')
+  check('live-delete: the DELETE event removes the live message from B’s list', !msgVisible(wB, 'پیام زندهٔ تازه'))
+  // Unknown id: no crash, no change.
+  deliverPostgresChange(wB, R1, { type: 'DELETE', oldRecord: { id: 'msg-zzz' } })
+  await sleep(300)
+  check('live-delete: a DELETE for an unknown id changes nothing', msgVisible(wB, 'پیام والد من'))
+  // Another room’s message: the handler only touches ids in this room’s list.
+  deliverPostgresChange(wB, R1, { type: 'DELETE', oldRecord: { id: 'msg-6' } })
+  await sleep(300)
+  check('live-delete: a DELETE for another room’s message changes nothing',
+    msgVisible(wB, 'پیام والد من') && !msgVisible(wB, 'پیام پروژهٔ پاک‌شدنی'))
+  mA.dom.window.close()
+  mB.dom.window.close()
 
   // ---- JS errors ----
   const realErrors = allErrors.filter((e) => !/websocket|realtime/i.test(e))

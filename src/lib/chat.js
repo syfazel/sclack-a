@@ -45,6 +45,27 @@ export function subscribeRoom(roomId) {
         chat.messages = [...chat.messages, row]
       }
     )
+    // Live delete (G1 fix, 2026-11-22): a delete must reach the other
+    // sessions too — the live test showed a message deleted in one tab
+    // stayed visible in the other tab for 20+ s because only INSERT
+    // was subscribed. No room filter on purpose: with the default
+    // replica identity the DELETE payload's old record carries only
+    // the primary key, so a room_id filter would never match
+    // server-side. The handler only removes ids that are actually in
+    // this room's list, which makes it room-safe anyway (chat.messages
+    // holds only the current room). Replies deleted with their parent
+    // arrive as their own DELETE events and leave the list the same way.
+    .on(
+      'postgres_changes',
+      { event: 'DELETE', schema: 'public', table: 'messages' },
+      (payload) => {
+        const id = payload.old?.id
+        if (!id) return
+        if (chat.messages.some((m) => m.id === id)) {
+          chat.messages = chat.messages.filter((m) => m.id !== id)
+        }
+      }
+    )
     .on('presence', { event: 'sync' }, () => {
       const state = channel.presenceState()
       chat.presence = Object.values(state)
