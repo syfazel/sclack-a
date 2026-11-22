@@ -857,3 +857,10 @@ npm run build      # بیلد پروداکشن؛ بدون کلید هم سبز �
 - استقرار زیرساخت: **انجام شد ~۱۶:۰۹:** کامیت `88e3ab1` («G6 — assistant: 30 commands»، ۷ فایل، +2366/−12)؛ ران Pages ‏45023227750 از همان تلاش اول success شد؛ باندل زنده `assets/index-rPidcbuj.js` (۵۵۰٬۷۴۲ بایت، HTTP 200) — با curl مستقیم چک شد.
 - استقرار رفع دام نگهبان: **انجام شد ~۱۶:۴۶:** کامیت `44f5f9f` (۴ فایل، +109/−21)؛ ران Pages ‏45026479583 از همان تلاش اول success شد؛ باندل زنده `assets/index-CEfK22pi.js` (۵۵۰٬۷۴۹ بایت، HTTP 200) — با curl مستقیم چک شد.
 - استقرار گرافیک مشترک: **انجام شد ~۱۷:۴۹:** کامیت `7edf73e` («G6 — joint assistant graphics implementation»، ۳ فایل، +711/−63)؛ ران Pages ‏45032081826 از همان تلاش اول success شد؛ باندل زنده `assets/index-CXZVPUGn.js` (۵۶۱٬۰۳۳ بایت، HTTP 200) با «حالت ساده» ×۲ و «در حال خواندن ردیف» ×۱ و صفر ارجاع به باندل قدیم — با curl مستقیم چک شد.
+
+## PWA — دکمهٔ ورود روی صفحهٔ اصلی گوشی (۲۲ نوامبر ۲۰۲۶، نسخهٔ ۰٫۱۱٫۰)
+
+- **هدف:** در کروم اندروید «Add to Home screen» / نصب برنامه پیشنهاد شود؛ آیکون روی صفحهٔ اصلی گوشی باز می‌شود به صفحهٔ ورود sclack_A (پس از یک‌بار ورود، نشست در مرورگر می‌ماند).
+- **فایل‌ها:** `public/manifest.webmanifest` (نام sclack_A، start_url ‏/sclack-a/‏، display standalone، theme ‏#d97706‏، آیکون‌های ۱۹۲/۵۱۲ + maskable)؛ `public/icon-192.png` و `icon-512.png` و `icon-512-maskable.png` (لوگوی چهار نقطه روی منحنی S، پس‌زمینهٔ کرم #fdf8ef، ساخته‌شده با PIL از favicon.svg)؛ `public/sw.js` (فقط نصب‌پذیری — بدون کش، fetch مستقیم)؛ `index.html` (لینک مانیفست + theme-color + apple-touch-icon)؛ `src/main.js` (ثبت سرویس‌ورکر پس از load، با catch خاموش)؛ `package.json` ‏۰٫۱۰٫۰ → **۰٫۱۱٫۰**.
+- **راستی‌آزمایی محلی (پیش از استقرار):** بیلد بدون کلید: باندل `assets/index-P95dHwJ9.js` (۳۳۶٬۹۵۶ بایت)، صفر ارجاع به ref پروژه و createClient، ثبت `serviceWorker.register('/sclack-a/sw.js')` در باندل؛ probe-mount ‏PASSED با صفر خطای JS (فرم ورود + اعلان کلید + برند دیده شدند). فایل‌های چت دیگر (Login.svelte، auth.js، auth-errors.js، probe-auth-errors.mjs، probe-mount.mjs) دست‌نخورده ماندند — کار در کلون تازهٔ HEAD انجام شد، نه در d3-app.
+- استقرار: **در حال انجام** (کامیت و ران Pages پس از این سطر کامل می‌شود).
