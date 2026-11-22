@@ -169,6 +169,9 @@
     </div>
 
     <main class="min-w-0 flex-1 pb-16 md:pb-0">
+      {#if ws.error}
+        <div class="alert alert-error m-4" role="alert"><span>{ws.error}</span></div>
+      {/if}
       {#if route.name === 'home'}
         <HomeView />
       {:else if route.name === 'rooms'}

@@ -15,6 +15,11 @@
 //      code path claims it works. If Broadcast + row ever both fail in a
 //      probe, that is reported as a failure (U6), not papered over.
 //
+//      حکم G7-3 (بسته‌شده با مدرک، ۲۲ نوامبر ۲۰۲۶): y-websocket لازم نیست —
+//      مسیر ردیف + Broadcast کافی است؛ سروری ساخته نمی‌شود. مدرک: کاوش‌های
+//      سندباکس probe-yjs (۱۵/۱۵) و probe-docview (۳۰/۳۰) سبزند و ماندگاری سند
+//      پس از رفع G1 در تست دوبارهٔ D6 رد شد.
+//
 // This module is pure Yjs + BroadcastChannel: it imports no Supabase code,
 // so the sandbox probe can run it in Node unchanged.
 

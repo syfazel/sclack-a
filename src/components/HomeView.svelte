@@ -639,10 +639,6 @@
   </section>
   </div>
 
-  {#if ws.error}
-    <div class="alert alert-error mt-4"><span>{ws.error}</span></div>
-  {/if}
-
   <!-- P01 A1: project creation form -->
   <section class="mt-6">
     <h2 class="mb-2 text-lg font-bold">ساختن پروژهٔ تازه</h2>

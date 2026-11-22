@@ -209,7 +209,7 @@
         </div>
         <div class="light-box" style="margin-top:12px">
           <div class="light-head"><span class="dot amber" id="light-rls"></span> RLS روی جدول پیام‌ها</div>
-          <div class="light-note" id="note-rls">هنوز اجرا نشده — تا وقتی فایل w0-rls.sql در SQL Editor اجرا و «بررسی RLS» در همین صفحه پاس نشود، این خط کهربایی می‌ماند.</div>
+          <div class="light-note" id="note-rls">سیاست‌های RLS زنده‌اند — ۴۹ سیاست روی ۱۳ جدول (۴۵ w1 + ‏۴ d2)؛ سیاست‌های `messages` همان ۴ سیاست d2 هستند (w0 حذف شد).</div>
           <div class="row">
             <button class="secondary" id="btn-rls-check" disabled>اجرای بررسی RLS</button>
           </div>
@@ -225,15 +225,15 @@
         </p>
       </section>
 
-      <!-- ===== کلید anon ===== -->
+      <!-- ===== کلید اتصال ===== -->
       <section class="card alt">
-        <h2>کلید اتصال (anon)</h2>
+        <h2>کلید اتصال</h2>
         <p>
-          این صفحه هیچ کلیدی در خودش ندارد. کلید anon پروژه را اینجا بگذارید؛ کلید فقط در حافظهٔ همین تب می‌ماند،
+          این صفحه هیچ کلیدی در خودش ندارد. کلید اتصال پروژه را اینجا بگذارید؛ کلید فقط در حافظهٔ همین تب می‌ماند،
           در هیچ ذخیره‌سازی‌ای (localStorage / sessionStorage / cookie) نوشته نمی‌شود و فقط به خود Supabase فرستاده می‌شود.
           با بستن تب، کلید از بین می‌رود.
         </p>
-        <label for="anon-key">کلید anon پروژهٔ sclack-a</label>
+        <label for="anon-key">کلید اتصال پروژهٔ sclack-a</label>
         <input type="password" id="anon-key" autocomplete="off" placeholder="کلید را اینجا بچسبانید" />
         <div class="row">
           <button id="btn-set-key">ثبت کلید و ساخت اتصال</button>
@@ -276,7 +276,7 @@
           <button id="btn-send-msg">فرستادن پیام پروب</button>
           <button class="secondary" id="btn-del-msgs" disabled>پاک‌کردن پیام‌های پروب من</button>
         </div>
-        <p class="hint" id="send-state">برای فرستادن پیام، اول کلید anon را وارد کنید.</p>
+        <p class="hint" id="send-state">برای فرستادن پیام، اول کلید اتصال را وارد کنید.</p>
         <p class="hint">وضعیت اشتراک: <span id="rt-sub-state">فعال نیست.</span></p>
         <h3 style="margin-top:14px">رویدادهای رسیده</h3>
         <div class="events" id="rt-events"><div class="hint">هنوز رویدادی نرسیده است.</div></div>
@@ -314,6 +314,7 @@
         <div class="stage">
           <div class="stage-head"><span class="dot amber" id="light-s3"></span> مرحلهٔ ۳ — سرور y-websocket</div>
           <p class="hint">اگر نشانی سرور داده نشود، این مرحله «پیکربندی نشده — پروب نشد» می‌ماند (کهربایی) و هرگز بدون اتصال موفق سبز نمی‌شود.</p>
+          <p class="hint">سروری در برنامه نیست و لازم نیست — مسیر سند BroadcastChannel + ردیف docs است (حکم G7-3 با مدرک کاوش‌های probe-yjs و probe-docview).</p>
           <label for="ws-url">نشانی سرور y-websocket (اختیاری)</label>
           <input type="url" id="ws-url" placeholder="wss://example.com" />
           <label for="ws-room">نام اتاق</label>
@@ -518,9 +519,11 @@
         // ---------- کلید و ساخت کلاینت ----------
         $('btn-set-key').addEventListener('click', function () {
           var k = $('anon-key').value.trim();
-          if (!k) { log('کلید خالی است؛ اول کلید anon را وارد کنید.'); return; }
-          if (k.split('.').length !== 3) {
-            log('هشدار: شکل کلید شبیه توکن JWT نیست؛ با این حال اتصال ساخته می‌شود و نتیجه در ورود معلوم می‌شود.');
+          if (!k) { log('کلید خالی است؛ اول کلید اتصال را وارد کنید.'); return; }
+          var isJwt = k.split('.').length === 3;
+          var isPublishable = k.indexOf('sb_publishable_') === 0;
+          if (!isJwt && !isPublishable) {
+            log('هشدار: شکل کلید نه شبیه توکن JWT است و نه کلید publishable (sb_publishable_…)؛ با این حال اتصال ساخته می‌شود و نتیجه در ورود معلوم می‌شود.');
           }
           anonKey = k;
           $('anon-key').value = '';
@@ -581,7 +584,7 @@
           var el = $('send-state');
           if (!el) return;
           if (!sb) {
-            el.textContent = 'برای فرستادن پیام، اول کلید anon را وارد کنید.';
+            el.textContent = 'برای فرستادن پیام، اول کلید اتصال را وارد کنید.';
           } else if (!session || !session.user) {
             el.textContent = 'وارد نشده‌اید — اول با ایمیل و رمز وارد شوید.';
           } else if (!member) {
@@ -788,7 +791,7 @@
         $('btn-send-msg').addEventListener('click', function () {
           // این دکمه هیچ‌وقت غیرفعال نمی‌شود تا هر کلیک دلیلش را بگوید:
           // سکوت کامل دکمه در پروب زنده، از همین نگهبانِ بی‌صدا بود.
-          if (!sb) { log('فرستادن ممکن نیست: هنوز کلید anon داده نشده و کلاینت ساخته نشده است.'); updateSendState(); return; }
+          if (!sb) { log('فرستادن ممکن نیست: هنوز کلید اتصال داده نشده و کلاینت ساخته نشده است.'); updateSendState(); return; }
           if (!session || !session.user) { log('فرستادن ممکن نیست: هنوز وارد نشده‌اید؛ اول با ایمیل و رمز وارد شوید.'); updateSendState(); return; }
           if (!member) {
             log('فرستادن ممکن نیست: ردیف عضو (members) هنوز ساخته نشده است' + (memberError ? ' — خطا: ' + memberError : '؛ اگر چند ثانیه گذشت و این پیام ماند، دوباره وارد شوید.') + ' تا ردیف عضو ساخته نشود، پیام فرستاده نمی‌شود.');
@@ -982,7 +985,7 @@
             sbB.auth.signOut();
             if (leak) {
               rlsPassed = false;
-              setLight('light-rls', 'red', 'note-rls', 'نشت دیده شد — جزئیات در گزارش بررسی زیر آمده است. اگر فایل w0-rls.sql هنوز اجرا نشده، اول آن را در SQL Editor اجرا کنید و دوباره بررسی کنید.');
+              setLight('light-rls', 'red', 'note-rls', 'نشت دیده شد — جزئیات در گزارش بررسی زیر آمده است. سیاست‌های RLS را در داشبورد Supabase بررسی کنید (۴۹ سیاست زنده: ۴۵ w1 + ‏۴ d2).');
               log('بررسی RLS: نشت دیده شد.');
             } else if (failures.length) {
               setLight('light-rls', 'amber', 'note-rls', 'بررسی کامل نشد: ' + failures.join('؛ '));
@@ -1105,7 +1108,7 @@
         // ---------- شروع ----------
         renderSession();
         updateYjsLight();
-        log('صفحهٔ پروب W0 آماده است. اول کلید anon را وارد کنید؛ کلاینت فقط بعد از آن ساخته می‌شود.');
+        log('صفحهٔ پروب W0 آماده است. اول کلید اتصال را وارد کنید؛ کلاینت فقط بعد از آن ساخته می‌شود.');
         if (!window.Y) log('هشدار: کتابخانهٔ Yjs بارگذاری نشد.');
         if (!window.supabase) log('هشدار: کتابخانهٔ supabase-js بارگذاری نشد.');
       })();

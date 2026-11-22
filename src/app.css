@@ -10,7 +10,7 @@
   --color-base-300: #f0e2c8;
   --color-base-content: #3f2e1e;
   --color-primary: #d97706;
-  --color-primary-content: #fff7ed;
+  --color-primary-content: #1c1917; /* G7-5: متن تیره روی کهربایی — کنتراست ≈۵٫۶:۱ (با #fff7ed فقط ≈۳:۱ بود) */
   --color-secondary: #f97066;
   --color-secondary-content: #fff5f3;
   --color-accent: #e07830;
@@ -183,9 +183,27 @@ body {
   min-height: 36px;
 }
 .hero-control.btn-active {
-  background: var(--amber-dark);
+  background: var(--amber-contrast); /* G7-5: متن سفید روی #9a5603 ≈۵٫۷:۱ (روی #d97706 فقط ≈۳٫۲:۱ بود) */
   color: #fff;
-  border-color: var(--amber-dark);
+  border-color: var(--amber-contrast);
+}
+
+/* G7-5: متن کهربایی (لینک‌ها، نشان تایپ، برچسب فعال ناوبری) با کهربایی تیره
+   خوانا می‌ماند — #d97706 روی پس‌زمینهٔ روشن فقط ≈۳:۱ بود؛ #9a5603 ≈۵٫۵:۱ است.
+   فقط رنگ متن عوض می‌شود، نه پس‌زمینهٔ دکمه‌های اصلی. */
+.text-primary {
+  color: var(--amber-contrast);
+}
+
+/* G7-5: موبایل — blur شیشه حداکثر ۸px (قانون لایه). این کوئری پیش از
+   قانون‌های کاهش شفافیت/حالت ساده می‌آید تا آن‌ها همچنان برنده باشند. */
+@media (max-width: 767px) {
+  .glass-card,
+  .glass-chrome,
+  .hero-control {
+    -webkit-backdrop-filter: blur(8px) saturate(var(--glass-saturate));
+    backdrop-filter: blur(8px) saturate(var(--glass-saturate));
+  }
 }
 
 /* prefers-reduced-motion: حرکت خاموش (G8) */
