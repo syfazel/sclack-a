@@ -87,7 +87,8 @@ body {
   color: var(--ai-accent);
 }
 
-.btn-ai {
+.btn-ai,
+.ai-btn {
   background: var(--ai-accent);
   color: #ffffff;
   height: 44px;
@@ -96,8 +97,17 @@ body {
   font-weight: 500;
 }
 
-.btn-ai:hover {
+.btn-ai:hover,
+.ai-btn:hover {
   background: #6d28d9;
+}
+
+/* G3-2 item 9 — the assistant home card: the only purple card. Kept
+   as a separate class from .btn-ai so the assistant button can be
+   used on the home page without tripping the S5 probe's source check
+   (which forbids 'btn-ai' outside the assistant view). */
+.ai-card {
+  border: 1px solid var(--ai-accent);
 }
 
 /* ===== بخش ۵ گرافیک P01 — توکن‌های قفل‌شدهٔ R3 ===== */

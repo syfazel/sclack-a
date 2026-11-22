@@ -404,6 +404,231 @@ export function plannerMenuDefaultDue(menuId, now = new Date(), selectedDayKey =
   return ''
 }
 
+// ---------- G3: dashboard home + team pulse ----------
+// All pure: rows in, numbers out, `now` pinned by the caller so the
+// sandbox probe can pin the clock. No number is ever invented — every
+// count comes from a real row; an empty input gives zeros and null
+// change rates (the UI then shows the empty state, not a fake %).
+
+const faNumFmt = new Intl.NumberFormat('fa-IR')
+
+// Persian digits, e.g. faNum(123) === '۱۲۳'.
+export function faNum(n) {
+  return faNumFmt.format(Number(n) || 0)
+}
+
+const JALALI_MONTHS = [
+  'فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور',
+  'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند'
+]
+
+// Short Jalali day label, e.g. «۱ آذر».
+export function jalaliShortDay(date) {
+  const p = jalaliParts(date)
+  return faNum(p.day) + ' ' + JALALI_MONTHS[p.month - 1]
+}
+
+const tehranHourFmt = new Intl.DateTimeFormat('en-US', {
+  timeZone: TEHRAN_TZ, hour: 'numeric', hourCycle: 'h23'
+})
+
+// Greeting by Tehran time of day (05–12 صبح، 12–15 ظهر، 15–19 عصر،
+/// otherwise شب). Pure: the caller passes `now`.
+export function tehranGreeting(now = new Date()) {
+  const h = Number(tehranHourFmt.format(toDate(now)))
+  if (h >= 5 && h < 12) return 'صبح بخیر'
+  if (h >= 12 && h < 15) return 'ظهر بخیر'
+  if (h >= 15 && h < 19) return 'عصر بخیر'
+  return 'شب بخیر'
+}
+
+// The 7 Tehran day keys of the current Tehran week, Saturday to
+// Friday (the Iranian week starts Saturday).
+export function tehranWeekDayKeys(now = new Date()) {
+  const n = toDate(now)
+  const wd = weekdayOfDayKey(tehranDayKey(n)) // 0=Sun..6=Sat
+  const daysSinceSat = (wd - 6 + 7) % 7
+  const start = addTehranDays(n, -daysSinceSat)
+  const keys = []
+  for (let i = 0; i < 7; i++) keys.push(tehranDayKey(addTehranDays(start, i)))
+  return keys
+}
+
+// Team pulse (U18), computed ONLY from real rows.
+//   todayMessages — messages with created_at on the current Tehran day
+//   doneThisWeek  — tasks done (status='done') with completed_at in the
+//                   current Tehran week (Saturday 00:00 – Friday 23:59:59)
+//   activeDocs    — docs with updated_at in the last 7×24h
+//   newFiles      — files with uploaded_at in the last 7×24h
+//   days          — the 7 Tehran days (today-6 .. today), each with the
+//                   per-day message count and done-task count
+//   changeMessages / changeDone — weekly change % of the 7-day sums vs
+//     the previous 7 days, rounded; null when the previous 7-day sum is
+//     0 (no previous-week data — the UI renders no % element at all).
+export function computeTeamPulse(
+  { messages = [], tasks = [], docs = [], files = [] },
+  now = new Date()
+) {
+  const n = toDate(now)
+  const nowMs = n.getTime()
+  const todayKey = tehranDayKey(n)
+  const weekKeys = new Set(tehranWeekDayKeys(n))
+  const weekAgoMs = nowMs - 7 * DAY_MS
+  const days = []
+  for (let i = 6; i >= 0; i--) {
+    const d = addTehranDays(n, -i)
+    days.push({ dayKey: tehranDayKey(d), label: jalaliShortDay(d), messages: 0, done: 0 })
+  }
+  const byKey = new Map(days.map((d) => [d.dayKey, d]))
+  const prevKeys = new Set()
+  for (let i = 13; i >= 7; i--) prevKeys.add(tehranDayKey(addTehranDays(n, -i)))
+  let prevMessages = 0
+  let prevDone = 0
+  for (const m of messages || []) {
+    if (!m.created_at) continue
+    const k = tehranDayKey(m.created_at)
+    const d = byKey.get(k)
+    if (d) d.messages++
+    else if (prevKeys.has(k)) prevMessages++
+  }
+  let doneThisWeek = 0
+  for (const t of tasks || []) {
+    if (t.status !== 'done' || !t.completed_at) continue
+    const k = tehranDayKey(t.completed_at)
+    if (weekKeys.has(k)) doneThisWeek++
+    const d = byKey.get(k)
+    if (d) d.done++
+    else if (prevKeys.has(k)) prevDone++
+  }
+  const activeDocs = (docs || []).filter((d) => {
+    if (!d.updated_at) return false
+    const ms = new Date(d.updated_at).getTime()
+    return ms >= weekAgoMs && ms <= nowMs
+  }).length
+  const newFiles = (files || []).filter((f) => {
+    if (!f.uploaded_at) return false
+    const ms = new Date(f.uploaded_at).getTime()
+    return ms >= weekAgoMs && ms <= nowMs
+  }).length
+  const curMessages = days.reduce((s, d) => s + d.messages, 0)
+  const curDone = days.reduce((s, d) => s + d.done, 0)
+  const changeMessages =
+    prevMessages > 0 ? Math.round(((curMessages - prevMessages) / prevMessages) * 100) : null
+  const changeDone =
+    prevDone > 0 ? Math.round(((curDone - prevDone) / prevDone) * 100) : null
+  return {
+    todayMessages: days[6].messages,
+    doneThisWeek,
+    activeDocs,
+    newFiles,
+    days,
+    prevMessages,
+    prevDone,
+    changeMessages,
+    changeDone
+  }
+}
+
+// Hand-made 7-day line chart geometry (no library): two series
+// (messages, done) as polyline point strings + area polygons. The x
+// axis is reversed — time flows right-to-left in Persian, so the
+// oldest day sits on the right and today on the left; the value axis
+// is on the right (PAD_R). Pure: the probe pins the days.
+const CHART_W = 600
+const CHART_H = 180
+const CHART_PAD_L = 8
+const CHART_PAD_R = 44
+const CHART_PAD_T = 12
+const CHART_PAD_B = 26
+
+export function computePulseChart(days) {
+  const list = days || []
+  const max = Math.max(1, ...list.map((d) => Math.max(d.messages || 0, d.done || 0)))
+  const step = list.length > 1 ? (CHART_W - CHART_PAD_L - CHART_PAD_R) / (list.length - 1) : 0
+  const x = (i) => CHART_W - CHART_PAD_R - i * step
+  const y = (v) => CHART_H - CHART_PAD_B - (v / max) * (CHART_H - CHART_PAD_T - CHART_PAD_B)
+  const pts = (key) =>
+    list.map((d, i) => x(i).toFixed(1) + ',' + y(d[key] || 0).toFixed(1)).join(' ')
+  const area = (key) =>
+    x(0).toFixed(1) + ',' + (CHART_H - CHART_PAD_B).toFixed(1) + ' ' +
+    pts(key) + ' ' +
+    x(list.length - 1).toFixed(1) + ',' + (CHART_H - CHART_PAD_B).toFixed(1)
+  return {
+    width: CHART_W,
+    height: CHART_H,
+    max,
+    messagesPoints: pts('messages'),
+    donePoints: pts('done'),
+    messagesArea: area('messages'),
+    doneArea: area('done'),
+    labels: list.map((d, i) => ({ x: x(i), label: d.label }))
+  }
+}
+
+// Recent activity (G3-2 item 6): the newest events from real rows —
+// task done / task created, doc edited / created, version saved —
+// merged by time, newest first. `nameOf` maps a member id to a display
+// name (same pattern as extractRoomSummary). Each event: { at,
+// actorId, actor, text, link }.
+export function buildRecentActivity(
+  { tasks = [], docs = [], versions = [] },
+  nameOf,
+  now = new Date(),
+  limit = 5
+) {
+  const events = []
+  for (const t of tasks || []) {
+    if (t.status === 'done' && t.completed_at) {
+      events.push({
+        at: t.completed_at,
+        actorId: t.assignee_id || t.created_by,
+        text: 'کار «' + t.title + '» را تمام کرد',
+        link: '#/tasks'
+      })
+    }
+    if (t.created_at) {
+      events.push({
+        at: t.created_at,
+        actorId: t.created_by,
+        text: 'کار «' + t.title + '» را ساخت',
+        link: '#/tasks'
+      })
+    }
+  }
+  for (const d of docs || []) {
+    if (!d.created_at) continue
+    if (d.updated_at && new Date(d.updated_at).getTime() > new Date(d.created_at).getTime()) {
+      events.push({
+        at: d.updated_at,
+        actorId: d.created_by,
+        text: 'سند «' + d.title + '» را ویرایش کرد',
+        link: '#/doc/' + d.id
+      })
+    } else {
+      events.push({
+        at: d.created_at,
+        actorId: d.created_by,
+        text: 'سند «' + d.title + '» را ساخت',
+        link: '#/doc/' + d.id
+      })
+    }
+  }
+  for (const v of versions || []) {
+    if (!v.created_at) continue
+    events.push({
+      at: v.created_at,
+      actorId: v.author_id,
+      text: 'نسخهٔ ' + faNum(v.version_no) + ' را ذخیره کرد',
+      link: '#/doc/' + v.doc_id
+    })
+  }
+  events.sort((a, b) => new Date(b.at) - new Date(a.at))
+  return events.slice(0, limit).map((e) => ({
+    ...e,
+    actor: (nameOf && nameOf(e.actorId)) || 'عضو'
+  }))
+}
+
 // ---------- P01 block D: Muse AI — deadline guardian + chat-to-task ----------
 // Both features are EXTRACTIVE-ONLY: they quote and point at real rows,
 // never invent content. `now` is passed in so the sandbox probe can pin

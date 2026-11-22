@@ -545,11 +545,12 @@ async function main() {
   await waitFor(w1, () => w1.document.querySelector('[data-home-hero]'), 10000, 'home hero band')
   await waitFor(w1, () => w1.document.body.textContent.includes('پروژهٔ پروب S5'), 10000, 'project loaded')
   const heroText = norm(w1.document.querySelector('[data-home-hero]').textContent)
-  check('S5 home: hero greets the member', heroText.includes('سلام'))
+  check('S5 home: hero greets the member (Tehran time-based)',
+    ['صبح بخیر', 'ظهر بخیر', 'عصر بخیر', 'شب بخیر'].some((g) => heroText.includes(g)), heroText)
   check('S5 home: hero shows exactly 1 unfinished task due today (real rows)',
-    heroText.includes('1 کار امروز'), heroText)
+    heroText.includes('۱ کار امروز'), heroText)
   check('S5 home: hero shows exactly 1 overdue task (real rows)',
-    heroText.includes('عقب‌مانده') && /1\s*عقب‌مانده/.test(heroText), heroText)
+    heroText.includes('عقب‌مانده') && /۱\s*عقب‌مانده/.test(heroText), heroText)
   check('S5 home: hero band shows the warm mesh while the chunk loads (jsdom: import() never settles)',
     !!w1.document.querySelector('[data-home-hero] .warm-mesh'))
   check('S5 home: project cards are glass with entry animation',

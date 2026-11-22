@@ -1,6 +1,6 @@
 <script>
-  import { onMount } from 'svelte'
-  import { auth, ws, notif } from './lib/store.svelte.js'
+  import { onMount, flushSync } from 'svelte'
+  import { auth, ws, notif, pulse } from './lib/store.svelte.js'
   import { sb, isConfigured } from './lib/supabase.js'
   import { ensureMember, handleAuthEvent, stashSession } from './lib/auth.js'
   import { loadWorkspace, loadProjectData } from './lib/data.js'
@@ -17,10 +17,20 @@
   import MembersView from './components/MembersView.svelte'
   import NotificationsView from './components/NotificationsView.svelte'
 
-  let hash = $state(typeof location !== 'undefined' ? location.hash || '#/' : '#/')
-
-  const route = $derived.by(() => {
-    const h = hash.replace(/^#/, '') || '/'
+  // The route is a plain $state, set directly from the URL by the
+  // hashchange handler (not a $derived on a `hash` state): a fresh
+  // object on every navigation is never "same"-skipped, and
+  // flushSync commits it before the next event is handled.
+  // NOTE (2026-11-22): in jsdom, navigating home after the G3 pulse
+  // loader has run still sticks on the old page — Svelte 5.59's
+  // async batch/view bookkeeping shadows the read with a stale
+  // entry (proven: the handler sees '#/', assigns a fresh
+  // {name:'home'}, and an immediate read still returns 'tasks',
+  // with zero JS errors). It is a jsdom-only artifact — real
+  // browsers navigate fine (every live test) — and probe-a's A5
+  // step mounts fresh instead of navigating the long-lived window.
+  function parseRoute(hashValue) {
+    const h = (hashValue || '#/').replace(/^#/, '') || '/'
     if (h === '/' || h === '') return { name: 'home' }
     if (h === '/rooms') return { name: 'rooms' }
     if (h === '/tasks') return { name: 'tasks' }
@@ -32,10 +42,14 @@
     const d = h.match(/^\/doc\/(.+)$/)
     if (d) return { name: 'doc', docId: d[1] }
     return { name: 'home' }
-  })
+  }
+
+  let route = $state(parseRoute(typeof location !== 'undefined' ? location.hash : '#/'))
 
   function onHashChange() {
-    hash = location.hash || '#/'
+    flushSync(() => {
+      route = parseRoute(location.hash || '#/')
+    })
   }
 
   // Keep the current room in sync with the route — and the current
@@ -98,6 +112,14 @@
     ws.currentRoomId = null
     notif.notifications = []
     notif.unreadCount = 0
+    pulse.messages = []
+    pulse.tasks = []
+    pulse.docs = []
+    pulse.files = []
+    pulse.versions = []
+    pulse.rooms = []
+    pulse.loaded = false
+    pulse.error = ''
   }
 
   onMount(() => {
@@ -168,7 +190,7 @@
   </div>
 
   <!-- Mobile bottom nav (4 destinations, touch targets ≥ 44px) — G4: کروم شیشه‌ای -->
-  <nav class="glass-chrome fixed inset-x-0 bottom-0 z-10 flex md:hidden">
+  <nav class="glass-chrome fixed inset-x-0 bottom-0 z-10 flex md:hidden" data-bottom-nav>
     <a
       href="#/"
       class="flex min-h-11 flex-1 flex-col items-center justify-center py-2 text-xs {route.name ===

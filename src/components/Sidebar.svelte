@@ -86,31 +86,39 @@
 </script>
 
 <!-- G4 — سایدبار: شیشهٔ سبک، فقط کروم -->
-<aside class="glass-chrome flex h-full w-64 flex-col gap-4 overflow-y-auto p-4" data-sidebar>
-  <a href="#/" class="flex items-center gap-2">
-    <LogoMark class="h-7 w-14" />
-    <span class="text-xl font-bold">sclack_A</span>
+<aside class="glass-chrome flex h-full w-[72px] flex-col gap-4 overflow-y-auto p-2 lg:w-[264px] lg:p-4" data-sidebar>
+  <a href="#/" class="flex items-center justify-center gap-2 lg:justify-start">
+    <LogoMark class="h-6 w-10 lg:h-7 lg:w-14" />
+    <span class="hidden text-xl font-bold lg:inline">sclack_A</span>
   </a>
 
-  <SearchBox />
+  <div class="hidden lg:block"><SearchBox /></div>
 
   <section>
-    <h2 class="mb-2 text-sm font-bold opacity-70">دستیار میوز</h2>
-    <a href="#/assistant" class="btn btn-ghost btn-sm w-full justify-start">
-      دستیار میوز — خلاصه و پیشنهاد
+    <h2 class="mb-2 hidden text-sm font-bold opacity-70 lg:block">دستیار میوز</h2>
+    <a href="#/assistant" class="btn btn-ghost btn-sm w-full justify-center px-0 lg:justify-start lg:px-2">
+      <svg viewBox="0 0 24 24" class="h-5 w-5 shrink-0" fill="currentColor" aria-hidden="true"><path d="M12 2l1.8 5.2L19 9l-5.2 1.8L12 16l-1.8-5.2L5 9l5.2-1.8z" /></svg>
+      <span class="hidden lg:inline">دستیار میوز — خلاصه و پیشنهاد</span>
     </a>
-    <p class="mt-1 text-xs opacity-50">فقط استخراجی؛ جمله‌ای ساخته نمی‌شود.</p>
+    <p class="mt-1 hidden text-xs opacity-50 lg:block">فقط استخراجی؛ جمله‌ای ساخته نمی‌شود.</p>
   </section>
 
   <section>
-    <h2 class="mb-2 text-sm font-bold opacity-70">صفحه‌ها</h2>
+    <h2 class="mb-2 hidden text-sm font-bold opacity-70 lg:block">صفحه‌ها</h2>
     <!-- D6 bug 6: the mobile bottom nav is the only tasks entry point and
          it is hidden at md and up, so at 768px and wider the tasks page
          was unreachable from the UI. These links cover every width. -->
-    <a href="#/tasks" class="btn btn-ghost btn-sm w-full justify-start"> کارها </a>
-    <a href="#/members" class="btn btn-ghost btn-sm w-full justify-start"> اعضا </a>
-    <a href="#/notifications" class="btn btn-ghost btn-sm w-full justify-start">
-      اعلان‌ها
+    <a href="#/tasks" class="btn btn-ghost btn-sm w-full justify-center px-0 lg:justify-start lg:px-2">
+      <svg viewBox="0 0 24 24" class="h-5 w-5 shrink-0" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /></svg>
+      <span class="hidden lg:inline">کارها</span>
+    </a>
+    <a href="#/members" class="btn btn-ghost btn-sm w-full justify-center px-0 lg:justify-start lg:px-2">
+      <svg viewBox="0 0 24 24" class="h-5 w-5 shrink-0" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
+      <span class="hidden lg:inline">اعضا</span>
+    </a>
+    <a href="#/notifications" class="btn btn-ghost btn-sm w-full justify-center px-0 lg:justify-start lg:px-2">
+      <svg viewBox="0 0 24 24" class="h-5 w-5 shrink-0" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>
+      <span class="hidden lg:inline">اعلان‌ها</span>
       {#if notif.unreadCount > 0}
         <span class="badge badge-warning badge-sm" data-unread-badge>{notif.unreadCount}</span>
       {/if}
@@ -118,7 +126,7 @@
   </section>
 
   <section>
-    <h2 class="mb-2 text-sm font-bold opacity-70">پروژه‌ها</h2>
+    <h2 class="mb-2 hidden text-sm font-bold opacity-70 lg:block">پروژه‌ها</h2>
     {#if ws.loading}
       <p class="text-sm opacity-60">در حال بارگذاری…</p>
     {:else if ws.projects.length === 0}
@@ -128,7 +136,7 @@
         {#each ws.projects as p (p.id)}
           <li>
             <button
-              class="btn btn-ghost btn-sm w-full justify-start {ws.currentProjectId === p.id
+              class="btn btn-ghost btn-sm w-full justify-start px-2 {ws.currentProjectId === p.id
                 ? 'btn-active'
                 : ''}"
               onclick={() => selectProject(p.id)}
@@ -148,7 +156,7 @@
   </section>
 
   <section>
-    <h2 class="mb-2 text-sm font-bold opacity-70">اتاق‌ها</h2>
+    <h2 class="mb-2 hidden text-sm font-bold opacity-70 lg:block">اتاق‌ها</h2>
     {#if ws.rooms.length === 0}
       <p class="text-sm opacity-60">اتاقی نیست — اول یک پروژه بسازید.</p>
     {:else}
@@ -157,7 +165,7 @@
           <li>
             <a
               href="#/room/{r.id}"
-              class="btn btn-ghost btn-sm w-full justify-start {ws.currentRoomId === r.id
+              class="btn btn-ghost btn-sm w-full justify-start px-2 {ws.currentRoomId === r.id
                 ? 'btn-active'
                 : ''}"
               onclick={() => {
@@ -173,7 +181,7 @@
   </section>
 
   <section>
-    <h2 class="mb-2 text-sm font-bold opacity-70">سندها</h2>
+    <h2 class="mb-2 hidden text-sm font-bold opacity-70 lg:block">سندها</h2>
     {#if !ws.currentProjectId}
       <p class="text-sm opacity-60">اول یک پروژه انتخاب کنید.</p>
     {:else if ws.docs.length === 0}
@@ -184,7 +192,7 @@
           <li>
             <a
               href="#/doc/{d.id}"
-              class="btn btn-ghost btn-sm w-full justify-start"
+              class="btn btn-ghost btn-sm w-full justify-start px-2"
             >
               {d.title}
             </a>
@@ -213,34 +221,35 @@
   </section>
 
   <section>
-    <h2 class="mb-2 text-sm font-bold opacity-70">اعضا</h2>
+    <h2 class="mb-2 hidden text-sm font-bold opacity-70 lg:block">اعضا</h2>
     <ul class="flex flex-col gap-1">
       {#each seats as m, i}
-        <li class="flex items-center gap-2 rounded-xl bg-base-100 px-3 py-2 text-sm">
+        <li class="flex items-center justify-center gap-2 rounded-xl bg-base-100 px-3 py-2 text-sm lg:justify-start">
           <span
             class="inline-block h-2.5 w-2.5 rounded-full {m && isOnline(m.id)
               ? 'bg-success'
               : 'bg-base-300'}"
           ></span>
           {#if m}
-            <span class="font-medium">{m.name}</span>
+            <span class="hidden font-medium lg:inline">{m.name}</span>
             {#if auth.member && m.id === auth.member.id}
-              <span class="text-xs opacity-60">(شما)</span>
+              <span class="hidden text-xs opacity-60 lg:inline">(شما)</span>
             {/if}
           {:else}
-            <span class="opacity-50">جای خالی {i + 1}</span>
+            <span class="hidden opacity-50 lg:inline">جای خالی {i + 1}</span>
           {/if}
         </li>
       {/each}
     </ul>
   </section>
 
-  <section>
+  <section class="hidden lg:block">
     <button
-      class="btn btn-ghost btn-sm w-full justify-start"
+      class="btn btn-ghost btn-sm w-full justify-center px-0 lg:justify-start lg:px-2"
       onclick={() => (showChange = !showChange)}
     >
-      تغییر رمز
+      <svg viewBox="0 0 24 24" class="h-5 w-5 shrink-0" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
+      <span class="hidden lg:inline">تغییر رمز</span>
     </button>
     {#if showChange}
       <div class="mt-2 flex flex-col gap-2">
@@ -308,13 +317,17 @@
     {/if}
     <!-- G8/R3 — «حالت ساده»: شیشه به مات برمی‌گردد و صحنهٔ سه‌بعدی خاموش می‌شود -->
     <button
-      class="btn btn-sclack btn-ghost btn-sm mb-2 w-full"
+      class="btn btn-sclack btn-ghost btn-sm mb-2 w-full justify-center px-0 lg:justify-start lg:px-2"
       onclick={toggleSimpleMode}
       title="شیشه را مات و صحنهٔ سه‌بعدی را خاموش می‌کند"
     >
-      {displayPrefs.simple ? 'حالت گرافیکی' : 'حالت ساده'}
+      <svg viewBox="0 0 24 24" class="h-5 w-5 shrink-0" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>
+      <span class="hidden lg:inline">{displayPrefs.simple ? 'حالت گرافیکی' : 'حالت ساده'}</span>
     </button>
-    <button class="btn btn-sclack btn-outline btn-sm w-full" onclick={signOut}>خروج از حساب</button>
-    <p class="mt-2 text-center text-xs opacity-50">sclack_A — اسکلت + چت + سند و فایل + کار و حافظه + دستیار (D5) + گرافیک (P01 بخش ۵)</p>
+    <button class="btn btn-sclack btn-outline btn-sm w-full justify-center px-0 lg:justify-start lg:px-2" onclick={signOut}>
+      <svg viewBox="0 0 24 24" class="h-5 w-5 shrink-0" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>
+      <span class="hidden lg:inline">خروج از حساب</span>
+    </button>
+    <p class="mt-2 hidden text-center text-xs opacity-50 lg:block">sclack_A — اسکلت + چت + سند و فایل + کار و حافظه + دستیار (D5) + گرافیک (P01 بخش ۵)</p>
   </div>
 </aside>

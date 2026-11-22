@@ -41,6 +41,21 @@ export const notif = $state({
   error: ''
 })
 
+// G3-3: team-pulse slice — workspace-wide rows, loaded by
+// loadTeamPulseData() in data.js. Only rows RLS shows; the pulse
+// numbers are derived from these rows by computeTeamPulse().
+export const pulse = $state({
+  messages: [],
+  tasks: [],
+  docs: [],
+  files: [],
+  versions: [],
+  rooms: [],
+  loading: false,
+  loaded: false,
+  error: ''
+})
+
 // ترجیح‌های نمایشی (بخش ۵ P01): «حالت ساده» شیشه را مات می‌کند و
 // صحنهٔ سه‌بعدی را خاموش می‌کند.
 export const displayPrefs = $state({

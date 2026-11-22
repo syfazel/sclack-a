@@ -86,6 +86,25 @@ export async function cycleTaskStatus(task) {
   return data
 }
 
+// Checkbox toggle for the home "my tasks" card (G3-2 item 3): unlike
+// cycleTaskStatus (todo -> doing -> done), a checkbox is binary —
+// done sets completed_at, unchecking returns the task to todo and
+// clears it (same rule as the Space app).
+export async function setTaskDone(task, done) {
+  const { data, error } = await sb
+    .from('tasks')
+    .update({
+      status: done ? 'done' : 'todo',
+      completed_at: done ? new Date().toISOString() : null
+    })
+    .eq('id', task.id)
+    .select()
+    .single()
+  if (error) throw error
+  await loadTasks(task.project_id)
+  return data
+}
+
 export async function deleteTask(task) {
   if (!task?.id) throw new Error('ردیف کار مشخص نیست.')
   // PostgREST DELETE without .select() answers success even when RLS

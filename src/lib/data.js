@@ -1,5 +1,5 @@
 import { sb } from './supabase.js'
-import { auth, ws } from './store.svelte.js'
+import { auth, ws, pulse } from './store.svelte.js'
 import { validateProjectForm } from './extract.js'
 import { loadDocs, createAutoDoc, listFiles, FILES_BUCKET } from './docs.js'
 import { loadTasks, loadTemplates, loadReminders } from './work.js'
@@ -374,4 +374,74 @@ export async function deleteProject(project) {
     ws.currentRoomId = null
   }
   await loadWorkspace()
+}
+
+// ---------- G3-3: team pulse ----------
+
+// Load the workspace-wide rows the pulse numbers are derived from —
+// messages, tasks, docs, files, versions, rooms. These are plain
+// workspace-wide SELECTs: they return only rows RLS lets this member
+// see (per-member policies on messages/reminders/comments, team
+// visibility on projects/rooms/docs/tasks/files — w1/d2), and the
+// numbers come from these rows alone (computeTeamPulse). One failed
+// query fails the whole load into a visible error state with retry —
+// no silent partial numbers. Never throws uncaught.
+// NOTE: every query carries an explicit .limit() — the sandbox stub
+// distinguishes these workspace-wide pulse queries from the
+// project-scoped loaders by that limit (see probe-g3.mjs).
+export async function loadTeamPulseData() {
+  if (!sb) {
+    pulse.error = 'کلید وصل نشده.'
+    return
+  }
+  pulse.loading = true
+  pulse.error = ''
+  try {
+    const [messages, tasks, docs, files, versions, rooms] = await Promise.all([
+      sb
+        .from('messages')
+        .select('id, created_at, room_id, author_id')
+        .order('created_at', { ascending: false })
+        .limit(500),
+      sb
+        .from('tasks')
+        .select('id, project_id, title, status, assignee_id, created_by, due_at, completed_at, created_at')
+        .order('created_at', { ascending: false })
+        .limit(500),
+      sb
+        .from('docs')
+        .select('id, project_id, title, created_by, created_at, updated_at')
+        .order('updated_at', { ascending: false })
+        .limit(200),
+      sb
+        .from('files')
+        .select('id, project_id, name, size, uploaded_by, uploaded_at')
+        .order('uploaded_at', { ascending: false })
+        .limit(200),
+      sb
+        .from('versions')
+        .select('id, doc_id, version_no, author_id, created_at')
+        .order('created_at', { ascending: false })
+        .limit(100),
+      sb
+        .from('rooms')
+        .select('id, project_id, name')
+        .order('created_at')
+        .limit(200)
+    ])
+    for (const r of [messages, tasks, docs, files, versions, rooms]) {
+      if (r.error) throw r.error
+    }
+    pulse.messages = messages.data || []
+    pulse.tasks = tasks.data || []
+    pulse.docs = docs.data || []
+    pulse.files = files.data || []
+    pulse.versions = versions.data || []
+    pulse.rooms = rooms.data || []
+    pulse.loaded = true
+  } catch (e) {
+    pulse.error = 'نبض تیم بارگذاری نشد: ' + (e?.message || String(e))
+  } finally {
+    pulse.loading = false
+  }
 }
