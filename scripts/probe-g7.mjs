@@ -24,7 +24,7 @@
 //     each width — the width mounts exercise the mount path; the
 //     responsive classes themselves are asserted in source.
 //  6. DOC SYNC (text): the four docs agree on the live state
-//     (0.9.0, live bundle index-DoMP8RId.js, 49 policies).
+//     (0.10.0, live bundle index-CXZVPUGn.js, 49 policies).
 //     NOTE on old bundle names: README-D3.md keeps dated 21-Nov
 //     changelog entries that name the bundle that was live THEN
 //     (and the G3 section names the clean dist bundle index-DXciAQfl.js
@@ -32,7 +32,7 @@
 //     dated D5-era name (index-BWxA_Hu3.js) in its section-9 intro.
 //     The check below asserts that no file presents an old bundle as
 //     the CURRENT live one: every 'باندل زنده' reference says
-//     index-DoMP8RId.js, and spec/plan contain no other index-*.js
+//     index-CXZVPUGn.js, and spec/plan contain no other index-*.js
 //     name at all.
 //
 // HERMETIC BUILD (same as probe-p01-a/b/c/d/s5/g3): this probe BUILDS
@@ -543,12 +543,12 @@ function docSyncChecks() {
   const audit = readFileSync(filesDir + '/bazresi-takmil-sclack-a.md', 'utf8')
   const docs = { 'spec-sclack-a.md': spec, 'plan-fazha.md': plan, 'bazresi-takmil-sclack-a.md': audit, 'README-D3.md': readme }
   for (const [name, content] of Object.entries(docs)) {
-    check(`G7-6: ${name} states live version ۰٫۹٫۰`, content.includes('۰٫۹٫۰'))
-    check(`G7-6: ${name} states live bundle index-DoMP8RId.js`, content.includes('index-DoMP8RId.js'))
+    check(`G7-6: ${name} states live version ۰٫۱۰٫۰`, content.includes('۰٫۱۰٫۰'))
+    check(`G7-6: ${name} states live bundle index-CXZVPUGn.js`, content.includes('index-CXZVPUGn.js'))
     check(`G7-6: ${name} states ۴۹ live RLS policies`, content.includes('۴۹'))
   }
   const otherBundles = (content) =>
-    [...content.matchAll(/index-[A-Za-z0-9_-]+\.js/g)].map((m) => m[0]).filter((b) => b !== 'index-DoMP8RId.js')
+    [...content.matchAll(/index-[A-Za-z0-9_-]+\.js/g)].map((m) => m[0]).filter((b) => b !== 'index-CXZVPUGn.js')
   check('G7-6: spec/plan contain no other bundle name',
     otherBundles(spec).length === 0 && otherBundles(plan).length === 0,
     [...otherBundles(spec), ...otherBundles(plan)].join(', '))
