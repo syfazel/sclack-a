@@ -4,7 +4,6 @@ import { memberName, loadTeamPulseData, closeProject } from './data.js'
 import { loadDocRow, loadComments, formatFileSize } from './docs.js'
 import {
   createTask,
-  loadTasks,
   loadReminders,
   loadTemplates,
   searchWorkspace,
@@ -127,9 +126,16 @@ export async function createTaskFromSuggestion(suggestion, { projectId, linkType
 // the table has no text column, so no message text is ever stored.
 export async function loadDeadlineGuardian(projectId) {
   if (!projectId) throw new Error('پروژه انتخاب نشده است.')
-  await loadTasks(projectId)
+  // Direct read of THIS project's tasks — not via loadTasks/ws.tasks:
+  // loadTasks drops the result when projectId differs from the
+  // sidebar's current project (its stale-response guard), so the
+  // guardian used to compute on the current project's tasks for a
+  // non-current selected project. Same direct-read pattern as the
+  // G6 loaders (queryProjectRows). loadTasks itself is untouched —
+  // its stale guard is still needed on the other paths.
+  const { tasks } = await queryProjectRows(projectId)
   await loadReminders()
-  const guardian = computeDeadlineGuardian(ws.tasks, ws.reminders, new Date())
+  const guardian = computeDeadlineGuardian(tasks, ws.reminders, new Date())
   const remindersRecorded = await ensureOverdueReminderPointers(guardian.overdue)
   return { ...guardian, remindersRecorded }
 }

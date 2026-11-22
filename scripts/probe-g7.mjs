@@ -562,10 +562,19 @@ function docSyncChecks() {
     auditOthers.length === 1 && auditOthers[0] === 'index-BWxA_Hu3.js' &&
     auditOtherLine.includes('باندل D5'),
     auditOthers.join(', '))
-  const g7Section = readme.slice(readme.indexOf('## G7'))
-  check('G7-6: README G7 section names only the live bundle',
-    g7Section.includes('index-DoMP8RId.js') && otherBundles(g7Section).length === 0,
-    otherBundles(g7Section).join(', '))
+  // The G7 section names only the bundle G7 itself deployed
+  // (index-BLqMQ91V.js, 22 Nov ~15:25). The check used to expect
+  // index-DoMP8RId.js here — that was the live bundle when G7-6 was
+  // written, before the G7 deploy; the README correction in the
+  // standard-check pass (G7 header + G7-6 line + deploy line) made
+  // the section name the G7 bundle, so the check follows the same
+  // rule with the new name. Scoped to ## G7..## G6 so the G6
+  // section's future bundle names cannot leak into it.
+  const g7Section = readme.slice(readme.indexOf('## G7'), readme.indexOf('## G6'))
+  const g7Others = [...g7Section.matchAll(/index-[A-Za-z0-9_-]+\.js/g)].map((m) => m[0]).filter((b) => b !== 'index-BLqMQ91V.js')
+  check('G7-6: README G7 section names only the G7 live bundle',
+    g7Section.includes('index-BLqMQ91V.js') && g7Others.length === 0,
+    g7Others.join(', '))
   const g3Section = readme.slice(readme.indexOf('## G3'), readme.indexOf('## G7'))
   check('G7-6: README G3 section records the live bundle as deployed',
     g3Section.includes('باندل زنده `assets/index-DoMP8RId.js`'))

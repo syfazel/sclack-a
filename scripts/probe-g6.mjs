@@ -19,6 +19,12 @@
 //     checked for the four suggestion commands (30-list #3 close,
 //     #7 chat-to-task, #13 doc-to-task, #30 template): running them
 //     creates nothing; the tap then creates exactly one row.
+//     The DB is now four projects: project 3 (active, unfinished
+//     rows with distinct titles) exists only for the guardian
+//     non-current-project checks (#57b) — its buckets must come from
+//     its own tasks; project 4 (active, no rows at all) exists only
+//     for the guardian empty-groups check — its groups must all be
+//     (0), never project 1's tasks.
 //  3. EMPTY MOUNT: a DB with members only — every new command shows
 //     its empty state («چیزی پیدا نشد») or the honest «پروژه/سند
 //     انتخاب نشده است» error, never a number.
@@ -76,6 +82,8 @@ const MEMBER_ID = '22222222-2222-2222-2222-222222222222'
 const MEMBER2_ID = '22222222-2222-2222-2222-222222222223'
 const PROJECT_ID = '33333333-3333-3333-3333-333333333333'
 const PROJECT2_ID = '33333333-3333-3333-3333-333333333334'
+const PROJECT3_ID = '33333333-3333-3333-3333-333333333335'
+const PROJECT4_ID = '33333333-3333-3333-3333-333333333336'
 const ROOM_ID = '44444444-4444-4444-4444-444444444444'
 const ROOM2_ID = '44444444-4444-4444-4444-444444444445'
 const DOC_ID = '55555555-5555-5555-5555-555555555555'
@@ -418,8 +426,11 @@ function makeDb() {
   }
 }
 
-// Two projects: project 1 (active, mixed rows — most commands) and
-// project 2 (stage review, all tasks done — the #8 close suggestion).
+// Four projects: project 1 (active, mixed rows — most commands),
+// project 2 (stage review, all tasks done — the #8 close
+// suggestion), project 3 (active, unfinished rows with distinct
+// titles — the guardian non-current-project checks), project 4
+// (active, no rows — the guardian empty-groups check).
 // All dates are relative to the probe's real clock, like probe-p01-d.
 function seedG6(db, now) {
   const isoAt = (dayOffset, time) =>
@@ -433,7 +444,13 @@ function seedG6(db, now) {
   })
   db.projects.push(
     { id: PROJECT_ID, workspace_id: 'main', name: 'پروژهٔ پروب G6', description: null, color: null, icon: null, created_by: MEMBER_ID, created_at: iso(now), visibility: 'team', archived: false, custom_fields: { goal: 'هدف G6', deadline: tehranDayKey(addTehranDays(now, 3)), stage: 'active', member_ids: [MEMBER_ID, MEMBER2_ID] } },
-    { id: PROJECT2_ID, workspace_id: 'main', name: 'پروژهٔ بستنی', description: null, color: null, icon: null, created_by: MEMBER_ID, created_at: iso(now), visibility: 'team', archived: false, custom_fields: { goal: 'هدف دوم', deadline: tehranDayKey(addTehranDays(now, 5)), stage: 'review', member_ids: [MEMBER_ID, MEMBER2_ID] } }
+    { id: PROJECT2_ID, workspace_id: 'main', name: 'پروژهٔ بستنی', description: null, color: null, icon: null, created_by: MEMBER_ID, created_at: iso(now), visibility: 'team', archived: false, custom_fields: { goal: 'هدف دوم', deadline: tehranDayKey(addTehranDays(now, 5)), stage: 'review', member_ids: [MEMBER_ID, MEMBER2_ID] } },
+    { id: PROJECT3_ID, workspace_id: 'main', name: 'پروژهٔ سوم', description: null, color: null, icon: null, created_by: MEMBER_ID, created_at: iso(now), visibility: 'team', archived: false, custom_fields: { goal: 'هدف سوم', deadline: tehranDayKey(addTehranDays(now, 7)), stage: 'active', member_ids: [MEMBER_ID, MEMBER2_ID] } },
+    // Project 4 (active, NO rows at all — only for the guardian
+    // empty-groups check below; project 2 cannot serve that role
+    // because #8 archives it before the guardian block runs, so its
+    // option leaves every project select).
+    { id: PROJECT4_ID, workspace_id: 'main', name: 'پروژهٔ خالی', description: null, color: null, icon: null, created_by: MEMBER_ID, created_at: iso(now), visibility: 'team', archived: false, custom_fields: { goal: 'هدف چهارم', deadline: tehranDayKey(addTehranDays(now, 9)), stage: 'active', member_ids: [MEMBER_ID, MEMBER2_ID] } }
   )
   db.rooms.push(
     { id: ROOM_ID, project_id: PROJECT_ID, name: 'گفت‌وگو', type: 'project', member_a: null, member_b: null, created_by: MEMBER_ID, created_at: iso(now), visibility: 'project', custom_fields: {} },
@@ -462,7 +479,13 @@ function seedG6(db, now) {
     task('task-done-today', PROJECT_ID, 'کار تمام‌شدهٔ امروز', MEMBER_ID, isoAt(0, '23:59:00'), 'done', -3, isoAt(0, '09:00:00')),
     task('task-done-old', PROJECT_ID, 'کار تمام‌شدهٔ قدیمی', MEMBER2_ID, isoAt(-10, '10:00:00'), 'done', -11, isoAt(-10, '09:00:00')),
     task('p2-task-1', PROJECT2_ID, 'کار تمام‌شدهٔ دوم ۱', MEMBER_ID, isoAt(1, '23:59:00'), 'done', -1, isoAt(0, '08:00:00')),
-    task('p2-task-2', PROJECT2_ID, 'کار تمام‌شدهٔ دوم ۲', MEMBER2_ID, isoAt(1, '23:59:00'), 'done', -1, isoAt(0, '08:30:00'))
+    task('p2-task-2', PROJECT2_ID, 'کار تمام‌شدهٔ دوم ۲', MEMBER2_ID, isoAt(1, '23:59:00'), 'done', -1, isoAt(0, '08:30:00')),
+    // Project 3 (active, unfinished rows with DISTINCT titles — only
+    // for the guardian non-current-project checks below: its buckets
+    // must come from its own tasks, never from project 1's).
+    task('p3-task-overdue', PROJECT3_ID, 'کار عقب‌ماندهٔ پروژهٔ سوم', MEMBER2_ID, isoAt(-1, '10:00:00'), 'todo', -2),
+    task('p3-task-today', PROJECT3_ID, 'کار امروز پروژهٔ سوم', MEMBER_ID, isoAt(0, '23:59:00'), 'todo', -1),
+    task('p3-task-soon', PROJECT3_ID, 'کار نزدیک پروژهٔ سوم', MEMBER_ID, isoAt(1, '23:59:00'), 'todo', -1)
   )
   db.files.push(
     { id: 'file-1', project_id: PROJECT_ID, name: 'تازه.txt', size: 1024, uploaded_by: MEMBER_ID, uploaded_at: isoAt(0, '08:30:00'), attached_to_type: null, attached_to_id: null },
@@ -1160,6 +1183,47 @@ async function main() {
   check('G6 mount #57: second summary adds no duplicate pointer (still 5 notifications)',
     db.notifications.length === 5, String(db.notifications.length))
 
+  // #57b guardian for NON-current projects — the trap fixed in the
+  // standard-check pass: loadDeadlineGuardian used to read through
+  // loadTasks/ws.tasks, whose stale-response guard drops a
+  // non-current project's rows, so the guardian computed on the
+  // current project's tasks. Project 3 is active with its own
+  // unfinished rows (distinct titles); project 2 has only done rows.
+  // The sidebar's current project stays project 1 throughout, so
+  // the old code would show project 1's 1/1/1 for both of them.
+  const gSec = guardianSection()
+  setSelect(w, gSec.querySelector('select'), PROJECT3_ID)
+  await sleep(300)
+  clickButton(w, w.document, 'خلاصهٔ امروز')
+  await waitFor(w, () => guardianSection().textContent.includes('کار امروز پروژهٔ سوم'), 10000, 'guardian project 3 renders')
+  const g3Text = norm(guardianSection().textContent)
+  check('G6 mount #57: guardian for the non-current project shows its OWN buckets (1/1/1)',
+    g3Text.includes('کارهای امروز (1)') && g3Text.includes('کارهای عقب‌مانده (1)') && g3Text.includes('سررسیدهای نزدیک (۴۸ ساعت آینده) (1)'), g3Text.slice(0, 300))
+  const g3Ids = [...guardianSection().querySelectorAll('[data-guardian-task]')].map((li) => li.getAttribute('data-guardian-task'))
+  check('G6 mount #57: guardian rows for the non-current project are exactly its own three tasks',
+    JSON.stringify([...g3Ids].sort()) === JSON.stringify(['p3-task-overdue', 'p3-task-soon', 'p3-task-today']), JSON.stringify(g3Ids))
+  check('G6 mount #57: non-current guardian records exactly one fresh pointer for its own overdue task (6 notifications)',
+    db.notifications.length === 6, String(db.notifications.length))
+  // Project 4 has no rows at all, so its three task groups must all
+  // be (0) with no task rows — but the member's own reminder today
+  // (rem-1) is project-independent, so `found` stays true and the
+  // honest «برای امروز کاری نیست» empty state does NOT appear here;
+  // that empty state belongs to the members-only mount instead.
+  // (Project 2 cannot serve this role: #8 archives it before the
+  // guardian block runs, so its option leaves every project select
+  // and the select falls back to project 1.)
+  setSelect(w, gSec.querySelector('select'), PROJECT4_ID)
+  await sleep(300)
+  clickButton(w, w.document, 'خلاصهٔ امروز')
+  await waitFor(w, () => guardianSection().textContent.includes('کارهای امروز (0)'), 10000, 'guardian project 4 renders')
+  const g4Text = norm(guardianSection().textContent)
+  check('G6 mount #57: guardian for the row-less non-current project shows all three groups at (0)',
+    g4Text.includes('کارهای امروز (0)') && g4Text.includes('کارهای عقب‌مانده (0)') && g4Text.includes('سررسیدهای نزدیک (۴۸ ساعت آینده) (0)'), g4Text.slice(0, 300))
+  check('G6 mount #57: guardian for the row-less non-current project shows no task rows',
+    guardianSection().querySelectorAll('[data-guardian-task]').length === 0, g4Text.slice(0, 300))
+  check('G6 mount #57: empty non-current guardian records no pointer (still 6 notifications)',
+    db.notifications.length === 6, String(db.notifications.length))
+
   // #11 room summary
   const roomSection = sectionByHeading(w, 'خلاصهٔ اتاق')
   setSelect(w, roomSection.querySelector('select'), ROOM_ID)
@@ -1182,18 +1246,18 @@ async function main() {
   const chatSection = w.document.querySelector('[data-chat-sug]')
   setSelect(w, chatSection.querySelector('select'), ROOM_ID)
   await sleep(300)
-  check('G6 mount #21: before running, still exactly the 8 seeded tasks',
-    db.tasks.length === 8, String(db.tasks.length))
+  check('G6 mount #21: before running, still exactly the 11 seeded tasks',
+    db.tasks.length === 11, String(db.tasks.length))
   clickButton(w, chatSection, 'پیشنهاد از چت')
   await waitFor(w, () => chatSection.textContent.includes('باید گزارش ماهانه را آماده کنیم'), 10000, 'chat suggestion renders')
   const chatRows = [...w.document.querySelectorAll('[data-chat-suggestion]')]
   check('G6 mount #21: exactly 1 suggestion from the action line',
     chatRows.length === 1, String(chatRows.length))
   check('G6 mount #21: running the suggestion creates nothing',
-    db.tasks.length === 8, String(db.tasks.length))
+    db.tasks.length === 11, String(db.tasks.length))
   const chatBtn = [...chatRows[0].querySelectorAll('button')].find((b) => b.textContent.trim() === 'ساختن کار')
   chatBtn.click()
-  await waitFor(w, () => db.tasks.length === 9, 10000, 'task created from chat suggestion')
+  await waitFor(w, () => db.tasks.length === 12, 10000, 'task created from chat suggestion')
   const chatTask = db.tasks.find((t) => t.title === 'باید گزارش ماهانه را آماده کنیم')
   check('G6 mount #21: created row has the quoted title + author assignee + source fields',
     !!chatTask && chatTask.assignee_id === MEMBER_ID &&
@@ -1212,18 +1276,18 @@ async function main() {
   const sugSection = sugBtn.closest('section')
   setSelect(w, sugSection.querySelector('select'), DOC_ID)
   await sleep(300)
-  check('G6 mount #36: before running, still exactly 9 tasks',
-    db.tasks.length === 9, String(db.tasks.length))
+  check('G6 mount #36: before running, still exactly 12 tasks',
+    db.tasks.length === 12, String(db.tasks.length))
   sugBtn.click()
   await waitFor(w, () => sugSection.textContent.includes('باید بودجهٔ پروژه را بررسی کنیم'), 10000, 'doc suggestion renders')
   const docRows = [...sugSection.querySelectorAll('[data-doc-suggestion]')]
   check('G6 mount #36: exactly 1 suggestion from the doc action line',
     docRows.length === 1, String(docRows.length))
   check('G6 mount #36: running the suggestion creates nothing',
-    db.tasks.length === 9, String(db.tasks.length))
+    db.tasks.length === 12, String(db.tasks.length))
   const docBtn = [...docRows[0].querySelectorAll('button')].find((b) => b.textContent.trim() === 'ساختن کار')
   docBtn.click()
-  await waitFor(w, () => db.tasks.length === 10, 10000, 'task created from doc suggestion')
+  await waitFor(w, () => db.tasks.length === 13, 10000, 'task created from doc suggestion')
   const docTask = db.tasks.find((t) => t.title === 'باید بودجهٔ پروژه را بررسی کنیم')
   check('G6 mount #36: created row has source_doc_id + source_quote, assignee null',
     !!docTask && docTask.custom_fields?.source_doc_id === DOC_ID &&
