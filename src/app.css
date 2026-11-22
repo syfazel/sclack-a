@@ -264,3 +264,276 @@ html.simple-mode .anim-enter {
   src: url('./assets/fonts/vazirmatn-latin.woff2') format('woff2');
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
+
+/* ===== G6 graphics — دستیار میوز (g6-grafik-spec.md) =====
+   همهٔ انتخاب‌کننده‌ها با ‎.ai-‎ شروع می‌شوند تا قانون «بنفش فقط در
+   پنل دستیار» (کاوش S5/G3) برقرار بماند؛ رنگ بنفش فقط از راه
+   ‎var(--ai-accent)‎ می‌آید، نه هگز مستقیم. حرکت فقط transform/opacity
+   است؛ ‎backdrop-filter‎ هرگز انیمیت نمی‌شود. */
+
+/* سربرگ شیشه‌ای پنل + نشان «۳۰ دستور» + دکمهٔ حالت ساده */
+.ai-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  border-radius: 16px;
+  padding: 10px 12px;
+}
+.ai-head .ai-title {
+  flex: 1;
+  min-width: 0;
+}
+.ai-badge {
+  background: var(--ai-accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 2px 10px;
+  white-space: nowrap;
+}
+.ai-simple-btn {
+  min-height: 32px;
+  border-radius: 999px;
+  border: 1px solid var(--glass-border);
+  background: transparent;
+  color: var(--ink-soft);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+.ai-simple-btn[aria-pressed="true"] {
+  background: var(--ai-accent);
+  border-color: var(--ai-accent);
+  color: #fff;
+}
+
+/* ریل چیپ‌ها — ۳۰ دستور در ۱۲ گروه */
+.ai-chips {
+  margin-top: 16px;
+}
+.ai-chip-group {
+  margin-top: 10px;
+}
+.ai-chip-group-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: #6d28d9;
+}
+.ai-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+.ai-chip {
+  min-height: 44px;
+  border-radius: 999px;
+  border: 1px solid var(--glass-border);
+  background: var(--glass-tint);
+  -webkit-backdrop-filter: blur(8px) saturate(var(--glass-saturate));
+  backdrop-filter: blur(8px) saturate(var(--glass-saturate));
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 6px 14px;
+  cursor: pointer;
+  transition:
+    transform 120ms ease-out,
+    opacity 120ms ease-out,
+    border-color 120ms ease-out,
+    background-color 120ms ease-out;
+}
+.ai-chip:hover {
+  border-color: var(--ai-accent);
+}
+.ai-chip:active {
+  transform: scale(0.97);
+}
+.ai-chip[aria-pressed="true"] {
+  background: var(--ai-accent);
+  border-color: var(--ai-accent);
+  color: #fff;
+  box-shadow: 0 4px 16px rgba(124, 58, 237, 0.25);
+}
+.ai-chip-tag {
+  font-size: 10px;
+  font-weight: 700;
+  color: #6d28d9;
+  margin-inline-start: 4px;
+}
+.ai-chip[aria-pressed="true"] .ai-chip-tag {
+  color: #ede9fe;
+}
+
+/* کارت‌های نتیجه — ورود ۱۸۰ms با stagger ‏۳۰ms (حداکثر ۶ کارت) */
+.ai-enter {
+  animation: sclack-enter 180ms ease-out both;
+}
+.ai-result-count {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px;
+}
+.ai-count {
+  background: var(--color-base-100);
+  border-radius: 16px;
+  padding: 12px;
+  text-align: center;
+}
+.ai-count-num {
+  display: block;
+  font-size: 48px;
+  font-weight: 800;
+  line-height: 1.1;
+  color: var(--ink);
+}
+.ai-count-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  margin-top: 4px;
+}
+.ai-count-value {
+  display: block;
+  font-size: 15px;
+  font-weight: 700;
+  margin-top: 4px;
+}
+.ai-result-quote {
+  border-inline-start: 2px solid var(--ai-accent);
+}
+.ai-result-suggest {
+  border: 1px solid var(--ai-accent);
+}
+.ai-result-list .ai-result-row:hover {
+  background: var(--color-base-300);
+}
+.ai-result-guardian {
+  border-top: 2px solid var(--ai-accent);
+  padding-top: 4px;
+}
+.ai-result-empty {
+  border: 1px dashed var(--glass-border);
+  border-radius: 16px;
+  padding: 12px;
+}
+.ai-result-error {
+  border: 1px solid var(--color-error);
+  border-radius: 16px;
+  padding: 12px;
+}
+.ai-result-row {
+  transition: background-color 120ms ease-out;
+}
+
+/* اسکلت بارگذاری — مات، با پالس opacity ‏۱٫۲s؛ متن صادقانه، بدون تایپ وانمودی */
+.ai-skeleton-bar {
+  height: 16px;
+  border-radius: 8px;
+  background: var(--color-base-300);
+  animation: ai-skeleton-pulse 1.2s ease-in-out infinite;
+}
+.ai-spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: var(--ai-accent);
+  margin-inline-end: 6px;
+  animation: ai-skeleton-pulse 1.2s ease-in-out infinite;
+}
+@keyframes ai-skeleton-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+/* کارت G6 — سربرگ قابل‌تپ برای باز/جمع کردن؛ بدنهٔ جمع‌شده فقط با CSS
+   پنهان می‌شود، نه با ‎{#if}‎ (کارت‌ها در DOM می‌مانند). */
+.ai-g6-head {
+  display: block;
+  width: 100%;
+  text-align: start;
+  cursor: pointer;
+  border-radius: 14px;
+  padding: 4px 8px;
+  margin-inline: -8px;
+}
+.ai-g6-head:hover {
+  background: var(--color-base-100);
+}
+.ai-g6-collapsed .ai-g6-body {
+  display: none;
+}
+
+/* بخش موجودِ فعال (از راه چیپ انتخاب شده) */
+.ai-active {
+  outline: 2px solid var(--ai-accent);
+  outline-offset: 2px;
+  border-radius: 16px;
+}
+
+/* موبایل — ریل چیپ افقی با scroll-snap؛ blur حداکثر ۸px */
+@media (max-width: 767px) {
+  .ai-chip-row {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    padding-bottom: 4px;
+  }
+  .ai-chip {
+    flex: 0 0 auto;
+    scroll-snap-align: start;
+  }
+  .ai-count-num {
+    font-size: 36px;
+  }
+}
+
+/* کاهش حرکت — همه‌چیز ساکن */
+@media (prefers-reduced-motion: reduce) {
+  .ai-chip,
+  .ai-enter,
+  .ai-skeleton-bar,
+  .ai-spinner,
+  .ai-result-row {
+    transition: none;
+    animation: none;
+  }
+}
+
+/* کاهش شفافیت + «حالت ساده» — شیشه به مات برمی‌گردد، هاله حذف می‌شود */
+@media (prefers-reduced-transparency: reduce) {
+  .ai-chip,
+  .ai-head {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background: var(--color-base-100);
+  }
+  .ai-chip[aria-pressed="true"] {
+    background: var(--ai-accent);
+    box-shadow: none;
+  }
+}
+html.simple-mode .ai-chip,
+html.simple-mode .ai-head {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  background: var(--color-base-100);
+}
+html.simple-mode .ai-chip[aria-pressed="true"] {
+  background: var(--ai-accent);
+  box-shadow: none;
+}
+html.simple-mode .ai-enter,
+html.simple-mode .ai-skeleton-bar,
+html.simple-mode .ai-spinner {
+  animation: none;
+}

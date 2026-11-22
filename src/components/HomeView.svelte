@@ -217,6 +217,17 @@
     location.hash = '#/assistant'
   }
 
+  // Quick chips on the assistant home card: hand the command number
+  // to the assistant view through localStorage, then navigate there.
+  function goAssistant(n) {
+    try {
+      window.localStorage.setItem('sclack-ai-active-cmd', String(n))
+    } catch {
+      /* storage unavailable */
+    }
+    location.hash = '#/assistant'
+  }
+
   onMount(() => {
     loadTeamPulseData()
     loadNotifications()
@@ -543,6 +554,17 @@
     />
     <button class="ai-btn mt-2 w-full" onclick={askAssistant}>بپرس</button>
     <a href="#/assistant" class="btn btn-sm btn-sclack-secondary mt-2">رفتن به دستیار</a>
+    <div class="mt-2 flex flex-wrap gap-2">
+      <button type="button" class="ai-chip" onclick={() => goAssistant(57)}>
+        نگهبان مهلت‌ها
+      </button>
+      <button type="button" class="ai-chip" onclick={() => goAssistant(77)}>
+        سؤال دربارهٔ فضای کاری
+      </button>
+      <button type="button" class="ai-chip" onclick={() => goAssistant(13)}>
+        پیام‌های امروز
+      </button>
+    </div>
   </section>
 
   <!-- G3-3: team pulse — four real counts + hand-made 7-day SVG line
