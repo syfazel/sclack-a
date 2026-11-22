@@ -3,6 +3,7 @@
   import { memberName } from '../lib/data.js'
   import {
     createTask,
+    updateTask,
     cycleTaskStatus,
     deleteTask,
     seedTemplates,
@@ -21,16 +22,17 @@
     plannerDayTasks,
     plannerMenuDefaultDue,
     endOfTehranDay,
+    tehranDayKey,
     jalaliMonthDays,
     jalaliMonthLabel,
     jalaliDayLabel,
-    tehranDayKey,
     weekdayOfDayKey,
     shiftJalaliMonth,
     isOverdueTask
   } from '../lib/extract.js'
   import SearchBox from './SearchBox.svelte'
   import FileList from './FileList.svelte'
+  import DocPicker from './DocPicker.svelte'
 
   // --- planner (P01 C): exactly the 8 menus of C1, on #/tasks ---
   let plannerMenu = $state('today')
@@ -109,9 +111,25 @@
   // Switching menus re-applies the prefill — a date typed by hand in one
   // menu does not carry over to another; clearing the date is how a
   // task is created without due_at (A2, «بدون تاریخ»).
+  // Phase 1: while an edit form is open the prefill must not clobber
+  // the edited due date.
   $effect(() => {
-    taskDue = plannerMenuDefaultDue(plannerMenu, new Date(), calSelectedDay)
+    if (!editingTaskId) taskDue = plannerMenuDefaultDue(plannerMenu, new Date(), calSelectedDay)
   })
+
+  // --- task edit (Phase 1): one inline form under the row, same fields
+  // as the create form, prefilled with the row's current values. Only
+  // one edit form is open at a time; cancel saves nothing.
+  let editingTaskId = $state(null)
+  let editTitle = $state('')
+  let editDesc = $state('')
+  let editAssignee = $state('')
+  let editDue = $state('')
+  let editLinkType = $state('')
+  let editLinkId = $state('')
+  let editError = $state('')
+  let editBusy = $state(false)
+  let editSavedId = $state(null)
 
   // --- templates ---
   let projectTemplateName = $state('')
@@ -140,12 +158,6 @@
       (f) => f.attached_to_type === 'task' && f.attached_to_id === t.id
     ).length
   }
-
-  const linkTargets = $derived.by(() => {
-    const rooms = ws.rooms.map((r) => ({ type: 'room', id: r.id, label: 'اتاق: ' + r.name }))
-    const docs = ws.docs.map((d) => ({ type: 'doc', id: d.id, label: 'سند: ' + d.title }))
-    return [...rooms, ...docs]
-  })
 
   function onLinkTypeChange() {
     taskLinkId = ''
@@ -236,6 +248,60 @@
     }
   }
 
+  function openEdit(t) {
+    // Toggling the same row closes its form without saving.
+    if (editingTaskId === t.id) {
+      editingTaskId = null
+      editError = ''
+      return
+    }
+    editingTaskId = t.id
+    editTitle = t.title || ''
+    editDesc = t.description || ''
+    editAssignee = t.assignee_id || ''
+    editDue = t.due_at ? tehranDayKey(t.due_at) : ''
+    const cf = t.custom_fields || {}
+    editLinkType = cf.link_type || ''
+    editLinkId = cf.link_id || ''
+    editError = ''
+  }
+
+  function cancelEdit() {
+    editingTaskId = null
+    editError = ''
+  }
+
+  function onEditLinkTypeChange() {
+    editLinkId = ''
+  }
+
+  async function doSaveEdit() {
+    if (editBusy || !editingTaskId) return
+    const task = ws.tasks.find((t) => t.id === editingTaskId)
+    if (!task) return
+    editBusy = true
+    editError = ''
+    try {
+      await updateTask(task, {
+        title: editTitle,
+        description: editDesc,
+        assigneeId: editAssignee || null,
+        dueAt: editDue ? endOfTehranDay(editDue) : null,
+        linkType: editLinkType || null,
+        linkId: editLinkId || null
+      })
+      editSavedId = task.id
+      editingTaskId = null
+      setTimeout(() => {
+        editSavedId = null
+      }, 700)
+    } catch (e) {
+      editError = e.message || String(e)
+    } finally {
+      editBusy = false
+    }
+  }
+
   async function doSeedTemplates() {
     if (seeding) return
     seeding = true
@@ -307,7 +373,11 @@
 
 <div class="h-full overflow-y-auto px-4 py-6 md:px-8">
   {#snippet taskRow(t)}
-    <li class="card bg-base-200">
+    <li
+      class="card bg-base-200 {editingTaskId === t.id ? 'task-editing' : ''} {editSavedId === t.id
+        ? 'task-saved-flash'
+        : ''}"
+    >
       <div class="card-body gap-1 py-3">
         <div class="flex items-start gap-2">
           <button
@@ -326,6 +396,15 @@
           >
             {t.title}
           </span>
+          <!-- Phase 1: edit is for every member (RLS allows any member
+               who sees the row to update it); delete stays creator-only. -->
+          <button
+            class="task-edit-btn btn btn-sclack btn-sm btn-outline min-h-11"
+            aria-label={'ویرایش کارِ ' + t.title}
+            onclick={() => openEdit(t)}
+          >
+            ویرایش
+          </button>
           {#if auth.member && t.created_by === auth.member.id}
             <button
               class="btn btn-ghost btn-sm {armDeleteTaskId === t.id ? 'btn-error' : 'text-error'}"
@@ -379,6 +458,95 @@
         </div>
         {#if taskErrorById[t.id]}
           <p class="text-xs text-error">{taskErrorById[t.id]}</p>
+        {/if}
+        {#if editingTaskId === t.id}
+          <!-- Phase 1: inline edit form under the row (accordion, like
+               the files section) — same fields as the create form,
+               prefilled with the row's current values. -->
+          <div
+            class="task-edit-form mt-2 rounded-xl bg-base-100 px-3 py-3"
+            data-edit-form={t.id}
+            aria-live="polite"
+          >
+            <h3 class="font-bold">ویرایش کار — {t.title}</h3>
+            <div class="mt-2 flex flex-col gap-2">
+              <input
+                class="input input-bordered input-sclack w-full bg-base-100"
+                placeholder="عنوان کار"
+                bind:value={editTitle}
+                disabled={editBusy}
+              />
+              <input
+                class="input input-bordered input-sclack w-full bg-base-100"
+                placeholder="توضیح (اختیاری)"
+                bind:value={editDesc}
+                disabled={editBusy}
+              />
+              <div class="flex flex-wrap gap-2">
+                <select
+                  class="select select-bordered input-sclack min-w-0 flex-1 bg-base-100"
+                  bind:value={editAssignee}
+                  disabled={editBusy}
+                >
+                  <option value="">بدون سپردن</option>
+                  {#each ws.members as m (m.id)}
+                    <option value={m.id}>{m.name}</option>
+                  {/each}
+                </select>
+                <input
+                  type="date"
+                  class="input input-bordered input-sclack bg-base-100"
+                  bind:value={editDue}
+                  disabled={editBusy}
+                />
+              </div>
+              <div class="flex flex-wrap gap-2">
+                <select
+                  class="select select-bordered input-sclack min-w-0 flex-1 bg-base-100"
+                  bind:value={editLinkType}
+                  onchange={onEditLinkTypeChange}
+                  disabled={editBusy}
+                >
+                  <option value="">بدون پیوند</option>
+                  <option value="room">پیوند به اتاق</option>
+                  <option value="doc">پیوند به سند</option>
+                </select>
+                {#if editLinkType === 'doc'}
+                  <DocPicker
+                    linkId={editLinkId}
+                    onSelect={(id) => (editLinkId = id)}
+                    disabled={editBusy}
+                  />
+                {:else if editLinkType === 'room'}
+                  <select
+                    class="select select-bordered input-sclack min-w-0 flex-1 bg-base-100"
+                    bind:value={editLinkId}
+                    disabled={editBusy}
+                  >
+                    <option value="">انتخاب کنید</option>
+                    {#each ws.rooms as r (r.id)}
+                      <option value={r.id}>اتاق: {r.name}</option>
+                    {/each}
+                  </select>
+                {/if}
+              </div>
+              {#if editError}
+                <p class="text-xs text-error">{editError}</p>
+              {/if}
+              <div class="flex flex-col gap-2 sm:flex-row">
+                <button
+                  class="btn btn-sclack btn-primary w-full sm:flex-1"
+                  onclick={doSaveEdit}
+                  disabled={editBusy}
+                >
+                  {editBusy ? 'در حال ذخیره…' : 'ذخیرهٔ تغییرات'}
+                </button>
+                <button class="btn btn-ghost" onclick={cancelEdit} disabled={editBusy}>
+                  انصراف
+                </button>
+              </div>
+            </div>
+          </div>
         {/if}
       </div>
     </li>
@@ -495,15 +663,24 @@
               <option value="room">پیوند به اتاق</option>
               <option value="doc">پیوند به سند</option>
             </select>
-            {#if taskLinkType}
+            {#if taskLinkType === 'doc'}
+              <!-- Phase 1: the doc target is a custom dropdown, not a
+                   native <select> (the native one threw browser errors
+                   repeatedly during the live AIM entry). -->
+              <DocPicker
+                linkId={taskLinkId}
+                onSelect={(id) => (taskLinkId = id)}
+                disabled={taskBusy}
+              />
+            {:else if taskLinkType === 'room'}
               <select
                 class="select select-bordered input-sclack min-w-0 flex-1 bg-base-100"
                 bind:value={taskLinkId}
                 disabled={taskBusy}
               >
                 <option value="">انتخاب کنید</option>
-                {#each linkTargets.filter((t) => t.type === taskLinkType) as t (t.id)}
-                  <option value={t.id}>{t.label}</option>
+                {#each ws.rooms as r (r.id)}
+                  <option value={r.id}>اتاق: {r.name}</option>
                 {/each}
               </select>
             {/if}

@@ -239,6 +239,88 @@ html.simple-mode .anim-enter {
   animation: none;
 }
 
+/* ===== فاز ۱ پلن کمبودها — ویرایش کار + فهرست‌کشویی سند =====
+   حرکت فقط transform/opacity؛ backdrop-filter هرگز انیمیت نمی‌شود. */
+.task-edit-btn:hover {
+  border-color: var(--amber-dark);
+}
+.task-editing {
+  outline: 2px solid var(--amber);
+  outline-offset: 2px;
+  border-radius: 16px;
+}
+.task-edit-form {
+  animation: task-edit-open 180ms ease-out both;
+}
+@keyframes task-edit-open {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.task-saved-flash {
+  animation: task-saved-flash 300ms ease-out 1;
+}
+@keyframes task-saved-flash {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+.doc-picker-menu {
+  max-height: 240px;
+  overflow-y: auto;
+  animation: doc-picker-open 150ms ease-out both;
+}
+@keyframes doc-picker-open {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.doc-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  border-radius: 12px;
+  padding: 6px 12px;
+  text-align: start;
+  cursor: pointer;
+}
+.doc-picker-item:hover {
+  background: var(--color-base-200);
+}
+.doc-picker-clear {
+  color: var(--ink-soft);
+}
+
+/* کاهش حرکت + «حالت ساده» — همهٔ حرکت‌های فاز ۱ ساکن */
+@media (prefers-reduced-motion: reduce) {
+  .task-edit-form,
+  .task-saved-flash,
+  .doc-picker-menu {
+    animation: none;
+  }
+}
+html.simple-mode .task-edit-form,
+html.simple-mode .task-saved-flash,
+html.simple-mode .doc-picker-menu {
+  animation: none;
+}
+
 /* وزیرمتن خودمیزبان (U20 — R3): فونت متغیر v16، بدون Google Fonts. */
 @font-face {
   font-family: 'Vazirmatn';

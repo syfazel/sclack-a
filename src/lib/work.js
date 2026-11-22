@@ -71,6 +71,36 @@ export async function createTask({ projectId, title, description, assigneeId, du
   return data
 }
 
+// Phase 1 (فاز ۱ پلن کمبودها): edit an existing task in place —
+// title, description, assignee, due date and link. status and
+// completed_at are never touched here (the cycle/checkbox own them).
+// custom_fields is merged so P01 D2 provenance (source_*) survives an
+// edit. Same empty-title validation as createTask.
+export async function updateTask(task, { title, description, assigneeId, dueAt, linkType, linkId }) {
+  if (!task?.id) throw new Error('ردیف کار مشخص نیست.')
+  const clean = (title || '').trim()
+  if (!clean) throw new Error('عنوان کار را بنویسید.')
+  const { data, error } = await sb
+    .from('tasks')
+    .update({
+      title: clean,
+      description: (description || '').trim() || null,
+      assignee_id: assigneeId || null,
+      due_at: dueAt || null,
+      custom_fields: {
+        ...(task.custom_fields || {}),
+        link_type: linkType || null,
+        link_id: linkId || null
+      }
+    })
+    .eq('id', task.id)
+    .select()
+    .single()
+  if (error) throw error
+  await loadTasks(task.project_id)
+  return data
+}
+
 // Cycle todo -> doing -> done -> todo. Done sets completed_at; leaving done
 // clears it (same rule as the Space app).
 export async function cycleTaskStatus(task) {
