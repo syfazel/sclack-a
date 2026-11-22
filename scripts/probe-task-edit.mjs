@@ -299,9 +299,15 @@ function setSelect(w, el, value) {
 }
 
 // The doc picker toggle button (aria-haspopup=listbox) inside a form
-// section; the menu lists docs by title.
+// section; the menu lists docs by title. 0.11.2: the menu is portaled
+// to document.body, so menu items are queried document-wide, not
+// under the form root.
 function pickerToggle(w, root) {
   return root.querySelector('.doc-picker button[aria-haspopup="listbox"]')
+}
+
+function pickerItems(w) {
+  return [...w.document.querySelectorAll('.doc-picker-menu .doc-picker-item')]
 }
 
 async function pickDoc(w, root, title) {
@@ -310,7 +316,7 @@ async function pickDoc(w, root, title) {
   toggle.click()
   const item = await waitFor(
     w,
-    () => [...root.querySelectorAll('.doc-picker-menu .doc-picker-item')].find((b) => b.textContent.includes(title)),
+    () => pickerItems(w).find((b) => b.textContent.includes(title)),
     5000,
     'doc picker item ' + title
   )
@@ -352,15 +358,13 @@ async function main() {
   pickerToggle(w, createSection).click()
   const firstItem = await waitFor(
     w,
-    () => createSection.querySelector('.doc-picker-menu .doc-picker-item'),
+    () => w.document.querySelector('.doc-picker-menu .doc-picker-item'),
     5000,
     'doc picker menu opens'
   )
   check('picker: menu opens and lists newest doc first', firstItem.textContent.includes('سند ب'), firstItem.textContent)
   // Pick سند الف (not the first item) to prove selection by tap.
-  const itemA = [...createSection.querySelectorAll('.doc-picker-menu .doc-picker-item')].find((b) =>
-    b.textContent.includes('سند الف')
-  )
+  const itemA = pickerItems(w).find((b) => b.textContent.includes('سند الف'))
   itemA.click()
   await sleep(200)
   check('picker: toggle shows the picked doc title', pickerToggle(w, createSection).textContent.includes('سند الف'))
@@ -477,6 +481,112 @@ async function main() {
     'row renders after link clear'
   )
   check('edit: row shows no link label after clear', !rowCleared.textContent.includes('سند:'))
+
+  // ---- Case 6: 0.11.2 — the menu is portaled out of the task card ----
+  // Live defect 1: the menu was covered by the save button and the
+  // following task cards. Create a second task so a following card
+  // exists after the edited row, then open the picker on the first row.
+  const titleInput2 = createSection.querySelector('input[placeholder="عنوان کار تازه"]')
+  setInput(w, titleInput2, 'کار دوم پروب')
+  const createBtn2 = [...createSection.querySelectorAll('button')].find((b) => b.textContent.trim() === 'ساختن کار')
+  createBtn2.click()
+  await waitFor(w, () => stub.db.tasks.length === 2, 10000, 'second task row created')
+  const row1 = [...w.document.querySelectorAll('li')].find((li) => li.textContent.includes('کار ویرایش‌شده'))
+  const editBtn6 = [...row1.querySelectorAll('button')].find((b) => b.getAttribute('aria-label')?.startsWith('ویرایش کارِ'))
+  editBtn6.click()
+  const editForm6 = await waitFor(w, () => w.document.querySelector('[data-edit-form]'), 5000, 'edit form opens (case 6)')
+  pickerToggle(w, editForm6).click()
+  const menu6 = await waitFor(w, () => w.document.querySelector('.doc-picker-menu'), 5000, 'portaled menu appears')
+  check('portal: menu is a direct child of document.body, not of the task card', menu6.parentElement === w.document.body, 'parent: ' + (menu6.parentElement?.tagName || 'none'))
+  check('portal: menu is not inside the task row', !row1.contains(menu6))
+  check('portal: menu is fixed-position with a top-layer z-index', menu6.style.position === 'fixed' && Number(menu6.style.zIndex) >= 50, menu6.style.position + ' z=' + menu6.style.zIndex)
+  const followingCard = [...w.document.querySelectorAll('li.card')].find((li) => li !== row1 && li.textContent.includes('کار دوم'))
+  check('portal: a following task card exists below the edited row', !!followingCard)
+  check('portal: menu comes after the following card in document order (paints above it)', !!(followingCard && (menu6.compareDocumentPosition(followingCard) & 2)), '')
+  // Picking still works from the portaled menu.
+  const item6 = pickerItems(w).find((b) => b.textContent.includes('سند الف'))
+  item6.click()
+  await sleep(200)
+  check('portal: picking from the portaled menu sets the toggle title', pickerToggle(w, editForm6).textContent.includes('سند الف'))
+  // Leave the row as case 5 left it: cancel without saving.
+  const cancel6 = [...editForm6.querySelectorAll('button')].find((b) => b.textContent.trim() === 'انصراف')
+  cancel6.click()
+  await sleep(200)
+
+  // ---- Case 7: 0.11.2 — the menu scrolls internally, never the page ----
+  // jsdom loads no external stylesheet, so assert on the built CSS text.
+  const distDir = new URL('../dist/', import.meta.url).pathname
+  const cssFile = readdirSync(distDir + 'assets').find((f) => f.endsWith('.css'))
+  check('scroll: built CSS asset exists', !!cssFile)
+  const cssText = cssFile ? readFileSync(distDir + 'assets/' + cssFile, 'utf8').replace(/\s+/g, '') : ''
+  const menuRules = [...cssText.matchAll(/\.doc-picker-menu\{[^}]*\}/g)].map((m) => m[0]).join(' ')
+  check('scroll: .doc-picker-menu caps height at 240px', menuRules.includes('max-height:240px'), menuRules.slice(0, 200))
+  check('scroll: .doc-picker-menu scrolls internally (overflow-y:auto)', menuRules.includes('overflow-y:auto'), menuRules.slice(0, 200))
+  check('scroll: .doc-picker-menu contains scroll chaining (overscroll-behavior:contain)', menuRules.includes('overscroll-behavior:contain'), menuRules.slice(0, 200))
+
+  // ---- Case 8: 0.11.2 — keyboard works from the toggle button ----
+  // Live defect 3: ArrowDown did nothing while focus was on the button.
+  // Live defect 5: Tab silently picked the wrong doc.
+  const row8 = [...w.document.querySelectorAll('li')].find((li) => li.textContent.includes('کار ویرایش‌شده'))
+  const editBtn8 = [...row8.querySelectorAll('button')].find((b) => b.getAttribute('aria-label')?.startsWith('ویرایش کارِ'))
+  editBtn8.click()
+  const editForm8 = await waitFor(w, () => w.document.querySelector('[data-edit-form]'), 5000, 'edit form opens (case 8)')
+  const toggle8 = pickerToggle(w, editForm8)
+  check('kbd: toggle is present', !!toggle8)
+  toggle8.focus()
+  check('kbd: toggle takes DOM focus', w.document.activeElement === toggle8)
+  // ArrowDown on the button opens the menu AND moves focus to the first option.
+  toggle8.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }))
+  await sleep(250)
+  check('kbd: ArrowDown on the button opens the menu', !!w.document.querySelector('.doc-picker-menu'))
+  const opts8 = pickerItems(w)
+  check('kbd: ArrowDown moves DOM focus to the first option (newest doc first)', w.document.activeElement === opts8[0] && opts8[0].textContent.includes('سند ب'), w.document.activeElement?.textContent)
+  // A second ArrowDown (now on the option) moves to the next option.
+  w.document.activeElement.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }))
+  await sleep(150)
+  check('kbd: second ArrowDown moves focus to the next option', w.document.activeElement === opts8[1] && opts8[1].textContent.includes('سند الف'), w.document.activeElement?.textContent)
+  // ArrowUp moves back.
+  w.document.activeElement.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }))
+  await sleep(150)
+  check('kbd: ArrowUp moves focus back to the first option', w.document.activeElement === opts8[0], w.document.activeElement?.textContent)
+  // Enter picks exactly the focused option — no other doc.
+  w.document.activeElement.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+  await sleep(200)
+  check('kbd: Enter picks the focused option and closes the menu', pickerToggle(w, editForm8).textContent.includes('سند ب') && !w.document.querySelector('.doc-picker-menu'))
+  // Tab from the button closes the menu WITHOUT picking anything.
+  toggle8.click()
+  await sleep(250)
+  check('kbd: toggle reopens the menu', !!w.document.querySelector('.doc-picker-menu'))
+  toggle8.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Tab', bubbles: true }))
+  await sleep(150)
+  check('kbd: Tab closes the menu without changing the selection', !w.document.querySelector('.doc-picker-menu') && pickerToggle(w, editForm8).textContent.includes('سند ب'))
+  // Leave the form untouched: cancel.
+  const cancel8 = [...editForm8.querySelectorAll('button')].find((b) => b.textContent.trim() === 'انصراف')
+  cancel8.click()
+  await sleep(200)
+
+  // ---- Case 9: defect 4 — the native link-type select under keyboard ----
+  // Chrome fires `change` when arrow keys move the selection; emulate
+  // exactly that (selectedIndex + change) and assert the picker appears.
+  // If this is green, the live report was a browser-automation artifact
+  // (a raw click on an <option> element never changes a select's value).
+  const linkTypeSel = [...createSection.querySelectorAll('select')].find((s) =>
+    [...s.options].some((o) => o.value === 'doc')
+  )
+  linkTypeSel.focus()
+  linkTypeSel.selectedIndex = [...linkTypeSel.options].findIndex((o) => o.value === 'doc')
+  linkTypeSel.dispatchEvent(new w.Event('change', { bubbles: true }))
+  await sleep(200)
+  check('link-type: keyboard-driven change to doc reveals the picker', !!createSection.querySelector('.doc-picker'))
+  linkTypeSel.selectedIndex = [...linkTypeSel.options].findIndex((o) => o.value === 'room')
+  linkTypeSel.dispatchEvent(new w.Event('change', { bubbles: true }))
+  await sleep(200)
+  check('link-type: keyboard-driven change to room shows the room select, picker hides', !createSection.querySelector('.doc-picker') && [...createSection.querySelectorAll('select')].some((s) => [...s.options].some((o) => o.value === ROOM_ID)))
+  // Leave the create form clean.
+  linkTypeSel.selectedIndex = 0
+  linkTypeSel.dispatchEvent(new w.Event('change', { bubbles: true }))
+  await sleep(150)
+  check('link-type: back to no-link leaves no picker', !createSection.querySelector('.doc-picker'))
 
   // ---- JS errors (excluding Realtime/WebSocket noise) ----
   const realErrors = m1.errors.filter((e) => !/websocket|realtime/i.test(e))

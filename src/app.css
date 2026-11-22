@@ -277,6 +277,9 @@ html.simple-mode .anim-enter {
 .doc-picker-menu {
   max-height: 240px;
   overflow-y: auto;
+  /* 0.11.2: wheel/touch scroll inside the menu must stay in the menu
+     (scroll chaining to the page hid behind the stacking defect). */
+  overscroll-behavior: contain;
   animation: doc-picker-open 150ms ease-out both;
 }
 @keyframes doc-picker-open {
