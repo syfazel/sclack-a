@@ -1,5 +1,6 @@
 <script>
   import { ws } from '../lib/store.svelte.js'
+  import { faNum } from '../lib/extract.js'
   import { RULE_CHAPTERS, rulesByChapter, rulesForSection, unmappedRules } from '../lib/rules-aim.js'
 
   let { docRow } = $props()
@@ -11,18 +12,21 @@
   let chapterFilter = $state('all') // all | الف | ب | ج | د
   let sectionFilter = $state('all') // all | 0 (سراسری) | 1..13 | unmapped
 
-  // سند بخش N در همین پروژه: عنوانش با «بخش N» شروع می‌شود.
+  // سند بخش N در همین پروژه: عنوانش با «بخش N» شروع می‌شود — با رقم
+  // فارسی، چون عنوان‌های واقعی سندها فارسی‌اند («بخش ۱»)؛ 'بخش ' + 1
+  // (لاتین) هیچ‌وقت جور نمی‌شد و پیوندها مرده می‌ماندند (فاز ۱۰).
   function sectionDocLink(section) {
     if (section === 0 || section === 'unmapped') return null
+    const want = 'بخش ' + faNum(section)
     const doc = (ws.docs || []).find(
-      (d) => d.project_id === docRow.project_id && (d.title || '').startsWith('بخش ' + section)
+      (d) => d.project_id === docRow.project_id && (d.title || '').startsWith(want)
     )
     return doc ? '#/doc/' + doc.id : null
   }
 
   function sectionLabel(section) {
     if (section === 0) return 'سراسری'
-    return 'بخش ' + section
+    return 'بخش ' + faNum(section)
   }
 
   let visibleRules = $derived.by(() => {
@@ -37,9 +41,9 @@
 <div class="mx-auto max-w-3xl p-4">
   <div class="mb-4 rounded-xl border border-[var(--line)] bg-[var(--paper-soft)] p-3 text-sm">
     <p>
-      {rules.length} قانون اجرای AIM در ۴ فصل (الف {byChapter['الف']?.length || 0} · ب
-      {byChapter['ب']?.length || 0} · ج {byChapter['ج']?.length || 0} · د
-      {byChapter['د']?.length || 0}).
+      {faNum(rules.length)} قانون اجرای AIM در ۴ فصل (الف {faNum(byChapter['الف']?.length || 0)} · ب
+      {faNum(byChapter['ب']?.length || 0)} · ج {faNum(byChapter['ج']?.length || 0)} · د
+      {faNum(byChapter['د']?.length || 0)}).
     </p>
     <p class="mt-1 text-[var(--ink-soft)]">
       آستانه‌های عددی (مثل «۱۰ مصاحبه»، «۳ نفر عاشق») پیشنهاد نگاشت به AIM‌اند، نه نقل‌قول ویدیو؛
@@ -47,7 +51,7 @@
     </p>
     {#if unmapped.length > 0}
       <p class="mt-1 text-[var(--ink-soft)]">
-        {unmapped.length} قانون در سند طرح به بخشی نگاشت نشده‌اند
+        {faNum(unmapped.length)} قانون در سند طرح به بخشی نگاشت نشده‌اند
         ({unmapped.map((r) => r.code).join('، ')}) — تعیین بخششان با یاسین است.
       </p>
     {/if}
@@ -68,7 +72,7 @@
       {/each}
       <option value="unmapped">بدون نگاشت</option>
     </select>
-    <span class="text-sm text-[var(--ink-soft)]">{visibleRules.length} قانون</span>
+    <span class="text-sm text-[var(--ink-soft)]">{faNum(visibleRules.length)} قانون</span>
   </div>
 
   {#each visibleRules as rule (rule.code)}

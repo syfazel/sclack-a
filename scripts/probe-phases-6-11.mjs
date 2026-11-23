@@ -806,6 +806,99 @@ async function main() {
     m.dom.window.close()
   }
 
+  // ---------- phase 10: 55-rule repository ----------
+  // Wiring from phase 6 (createRulesDoc + sidebar button + RulesView)
+  // was present, but the probe found a REAL bug: sectionDocLink built
+  // 'بخش ' + 1 (Latin digit) while section docs are titled with Persian
+  // digits («بخش ۱») — startsWith never matched, so every section link
+  // rendered as dead text. Fixed with faNum (see RulesView.svelte).
+  section('phase 10 pure: the 55 rules')
+  check('phase 10 pure: exactly 55 rules (14 الف + 12 ب + 14 ج + 15 د)',
+    countRules(RULES_55) === 55 &&
+    rulesByChapter(RULES_55)['الف'].length === 14 &&
+    rulesByChapter(RULES_55)['ب'].length === 12 &&
+    rulesByChapter(RULES_55)['ج'].length === 14 &&
+    rulesByChapter(RULES_55)['د'].length === 15)
+  check('phase 10 pure: exactly 3 unmapped rules (R-B10, R-B11, R-C14)',
+    unmappedRules(RULES_55).map((r) => r.code).join(',') === 'R-B10,R-B11,R-C14')
+  check('phase 10 pure: rulesForSection(1) = section-1 rules + global rules (0)',
+    rulesForSection(1, RULES_55).length > 0 &&
+    rulesForSection(1, RULES_55).every((r) => r.sections.includes(1) || r.sections.includes(0)) &&
+    rulesForSection(1, RULES_55).some((r) => r.sections.includes(1)))
+  check('phase 10 pure: global rules (section 0) exist',
+    rulesForSection(0, RULES_55).length > 0 &&
+    rulesForSection(0, RULES_55).every((r) => r.sections.includes(0)))
+
+  section('phase 10 DOM: one-tap rules doc + filters + section links')
+  {
+    const db = makeDb()
+    const stub = makeStub(db)
+    const m = await mountApp({ html, js }, stub, '#/tasks')
+    const { w } = m
+    const rulesBtn = await waitFor(w, () => w.document.querySelector('[data-create-rules-doc]'), 10000, 'create-rules-doc button')
+    rulesBtn.click()
+    const rulesDocId = await waitFor(w, () => {
+      const id = (w.location.hash || '').match(/^#\/doc\/(.+)$/)?.[1]
+      return id && db.docs.find((d) => d.id === id && d.custom_fields?.rules_kind === 'aim-55') ? id : null
+    }, 10000, 'rules doc created + opened')
+    await waitFor(w, () => w.document.body.textContent.includes('قانون اجرای AIM'), 10000, 'RulesView mounted')
+    const articles = () => w.document.querySelectorAll('article')
+    await waitFor(w, () => articles().length === 55, 10000, '55 rule cards')
+
+    check('phase 10: one tap creates the rules doc (ز — مخزن قوانین اجرای AIM)',
+      db.docs.find((d) => d.id === rulesDocId)?.title === 'ز — مخزن قوانین اجرای AIM (۵۵ قانون)')
+    check('phase 10: the rules doc stores all 55 rules in its custom_fields',
+      (db.docs.find((d) => d.id === rulesDocId)?.custom_fields?.rules || []).length === 55)
+    check('phase 10: all 55 rule cards render',
+      articles().length === 55)
+    check('phase 10: honesty warning about numeric thresholds is shown',
+      w.document.body.textContent.includes('فقط کیفی به کار می‌رود'))
+    check('phase 10: unmapped-rules note names R-B10, R-B11, R-C14',
+      w.document.body.textContent.includes('R-B10') && w.document.body.textContent.includes('R-C14'))
+    check('phase 10: structured doc hides the text editor + versions',
+      !w.document.querySelector('textarea[placeholder="اینجا بنویسید…"]') &&
+      !w.document.body.textContent.includes('ذخیرهٔ نسخه'))
+
+    const chapterSelect = w.document.querySelector('select[aria-label="فصل"]')
+    setSelect(w, chapterSelect, 'الف')
+    await waitFor(w, () => articles().length === 14, 10000, '14 الف rules after filter')
+    check('phase 10: chapter filter الف shows 14 rules',
+      articles().length === 14)
+
+    const sectionSelect = w.document.querySelector('select[aria-label="بخش طرح"]')
+    setSelect(w, chapterSelect, 'all')
+    setSelect(w, sectionSelect, '1')
+    const sec1Count = rulesForSection(1, RULES_55).length
+    await waitFor(w, () => articles().length === sec1Count, 10000, 'section 1 rules after filter')
+    check('phase 10: section filter 1 shows exactly the section-1 rules (' + sec1Count + ')',
+      articles().length === sec1Count)
+
+    // The section link must be a LIVE link to the section doc (the
+    // phase-10 bug: Latin 'بخش 1' never matched the Persian-titled doc).
+    const secLink = [...w.document.querySelectorAll('article a')].find((a) => a.textContent.trim() === 'بخش ۱')
+    check('phase 10: section 1 renders as a link (not dead text)',
+      !!secLink)
+    check('phase 10: the section link points at the real section doc',
+      secLink?.getAttribute('href') === '#/doc/' + DOC_SEC1_ID)
+    secLink.click()
+    await waitFor(w, () => w.location.hash === '#/doc/' + DOC_SEC1_ID, 10000, 'navigated to the section doc')
+    check('phase 10: clicking the section link opens the section doc',
+      w.location.hash === '#/doc/' + DOC_SEC1_ID)
+
+    // Idempotency: the one-tap button returns the SAME doc, no duplicate.
+    w.location.hash = '#/tasks'
+    await waitFor(w, () => w.document.querySelector('[data-create-rules-doc]'), 10000, 'back to tasks')
+    w.document.querySelector('[data-create-rules-doc]').click()
+    await sleep(1500)
+    check('phase 10: second tap reopens the same doc (no duplicate rules doc)',
+      db.docs.filter((d) => d.custom_fields?.rules_kind === 'aim-55').length === 1 &&
+      w.location.hash === '#/doc/' + rulesDocId)
+
+    const realErrors = m.errors.filter((e) => !/websocket|realtime/i.test(e))
+    check('phase 10: 0 non-Realtime JS errors on the mount', realErrors.length === 0, JSON.stringify(realErrors.slice(0, 3)))
+    m.dom.window.close()
+  }
+
   // ---------- summary ----------
   console.log('\n' + (failures === 0 ? 'ALL PHASES 6-11 PROBES PASSED' : `${failures} PROBE(S) FAILED`))
   for (const [s, n] of Object.entries(sectionFailures)) console.log('  failed in ' + s + ': ' + n)
