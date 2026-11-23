@@ -5,10 +5,14 @@ import {
   clearStashedSession,
   handleAuthEvent
 } from './auth-events.js'
+import { isRateLimitError, loginErrorMessage, validateNewPassword } from './extract.js'
 
 // The App's onAuthStateChange handler lives in auth-events.js (no
 // imports, so the probe can drive it directly); re-exported here.
 export { handleAuthEvent, stashSession, clearStashedSession }
+
+// Re-exported so existing imports of isRateLimitError from here keep working.
+export { isRateLimitError }
 
 // ---------- signup validation (proven in the W0 probe page) ----------
 // Reserved/unroutable domains are rejected client-side with a message that
@@ -38,13 +42,9 @@ export function validateSignupEmail(email) {
   return null
 }
 
-export function isRateLimitError(err) {
-  const m = (err && err.message) || ''
-  return (err && err.status === 429) || /rate limit/i.test(m)
-}
-
 // The exact Supabase error text is shown as-is, never summarized.
 // A 429 shows the amber "rate limit, wait and retry" state.
+// (isRateLimitError lives in extract.js now, re-exported above.)
 export function authErrorMessage(where, err) {
   const exact = (err && err.message) || String(err)
   if (isRateLimitError(err)) {
@@ -182,11 +182,41 @@ export async function updateDisplayName(name) {
 
 export async function signIn(email, password) {
   const { data, error } = await sb.auth.signInWithPassword({ email, password })
-  if (error) return { ok: false, ...authErrorMessage('ورود', error) }
+  if (error) return { ok: false, ...loginErrorMessage(error) }
   auth.user = data.user
   stashSession(data.session)
   await ensureMember(data.user)
   return { ok: true, text: 'ورود انجام شد.', kind: 'ok' }
+}
+
+// ---------- password reset by email (Phase 11, D10) ----------
+// redirectTo is the SITE ROOT, deliberately without a hash route:
+// Supabase appends `#access_token=...&type=recovery` to it, and the
+// Supabase client only parses that hash when it is the whole hash — a
+// `#/reset-password` in front would hide the access_token from it.
+// The client then fires PASSWORD_RECOVERY with a session, and the App
+// shows the reset form (auth.recoveryMode). The '#/reset-password'
+// route exists for deep links and the probe, and renders the same form.
+export async function requestPasswordReset(email) {
+  const clean = (email || '').trim()
+  if (!clean) return { ok: false, text: 'ایمیلت را بنویس.', kind: 'error' }
+  const { error } = await sb.auth.resetPasswordForEmail(clean, {
+    redirectTo: location.origin + location.pathname
+  })
+  if (error) return { ok: false, ...authErrorMessage('ارسال پیوند بازیابی', error) }
+  return {
+    ok: true,
+    text: 'پیوند بازیابی رمز به ' + clean + ' فرستاده شد — صندوق ایمیلت را چک کن (پوشهٔ اسپم را هم ببین).',
+    kind: 'ok'
+  }
+}
+
+export async function completePasswordReset(next, confirm) {
+  const bad = validateNewPassword(next, confirm)
+  if (bad) return { ok: false, text: bad, kind: 'error' }
+  const { error } = await sb.auth.updateUser({ password: next })
+  if (error) return { ok: false, ...authErrorMessage('تغییر رمز', error) }
+  return { ok: true, text: 'رمز تازه ثبت شد — حالا با رمز تازه وارد شو.', kind: 'ok' }
 }
 
 export async function signUp(email, password) {

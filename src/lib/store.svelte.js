@@ -6,7 +6,8 @@ export const auth = $state({
   memberError: null,
   sessionReady: false, // session restore finished
   authMsg: '',
-  authMsgKind: '' // '', 'error', 'rate-limited', 'ok'
+  authMsgKind: '', // '', 'error', 'rate-limited', 'ok'
+  recoveryMode: false // Phase 11: a PASSWORD_RECOVERY session arrived — show the reset form, not the shell
 })
 
 export const ws = $state({

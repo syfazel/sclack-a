@@ -77,6 +77,51 @@ export function nextVersionNo(existingNos) {
   return Math.max(...existingNos) + 1
 }
 
+// ---------- Phase 11: password reset + clearer login errors (D10) ----------
+// Pure helpers live here (not in auth.js) so the probe can import them
+// in Node — auth.js holds the Supabase calls and imports these.
+export function isRateLimitError(err) {
+  const m = (err && err.message) || ''
+  return (err && err.status === 429) || /rate limit/i.test(m)
+}
+
+// Supabase login failures, in plain Persian. The raw error
+// ("Invalid login credentials") tells the user nothing about what to
+// do next; the mapping names the fix — retry, confirm the email, or
+// use «رمز را فراموش کردم». Unknown errors keep the exact Supabase
+// text after the prefix, so nothing is hidden.
+export function loginErrorMessage(err) {
+  const hay = [err && err.message, err && err.code, err && err.error_description]
+    .filter(Boolean)
+    .join(' ')
+  if (isRateLimitError(err)) {
+    return {
+      text: 'به سقف نرخ رسیدی — کمی صبر کن و بعد دوباره تلاش کن.',
+      kind: 'rate-limited'
+    }
+  }
+  if (/invalid login credentials|invalid_grant/i.test(hay)) {
+    return {
+      text: 'ایمیل یا رمز اشتباه است. اگر رمزت را فراموش کرده‌ای، از «رمز را فراموش کردم» پایین صفحه استفاده کن.',
+      kind: 'error'
+    }
+  }
+  if (/email not confirmed/i.test(hay)) {
+    return {
+      text: 'ایمیلت هنوز تأیید نشده است. اول پیوند تأیید را از صندوق ایمیلت باز کن و بعد وارد شو.',
+      kind: 'error'
+    }
+  }
+  return { text: 'ورود ناموفق: ' + ((err && err.message) || String(err)), kind: 'error' }
+}
+
+export function validateNewPassword(next, confirm) {
+  if (!next || !confirm) return 'رمز تازه و تکرارش را کامل وارد کنید.'
+  if (next.length < 6) return 'رمز تازه باید دست‌کم ۶ نویسه باشد.'
+  if (next !== confirm) return 'تکرار رمز تازه با رمز تازه یکی نیست.'
+  return null
+}
+
 // ---------- Phase 3: doc full-text search ----------
 // Cap for docs.search_text (decision D2): the plain Yjs text, capped.
 // Long docs still save — only the indexed copy is capped.

@@ -8,6 +8,7 @@
   import { refreshUnreadCount } from './lib/notifications.js'
   import { openDocTab, reopenClosedTab, restoreDocTabs } from './lib/tabs.js'
   import Login from './components/Login.svelte'
+  import ResetPassword from './components/ResetPassword.svelte'
   import Sidebar from './components/Sidebar.svelte'
   import DocTabs from './components/DocTabs.svelte'
   import HomeView from './components/HomeView.svelte'
@@ -41,6 +42,11 @@
     if (h === '/assistant') return { name: 'assistant' }
     if (h === '/members') return { name: 'members' }
     if (h === '/notifications') return { name: 'notifications' }
+    // Phase 11: the reset route. The suffix allows the recovery hash
+    // Supabase appends (…#/reset-password#access_token=…) — parseRoute
+    // must still see the route through it.
+    if (h === '/reset-password' || h.startsWith('/reset-password#') || h.startsWith('/reset-password?'))
+      return { name: 'reset-password' }
     const m = h.match(/^\/room\/(.+)$/)
     if (m) return { name: 'room', roomId: m[1] }
     const d = h.match(/^\/doc\/(.+)$/)
@@ -107,6 +113,7 @@
   function onSignedOut() {
     auth.user = null
     auth.member = null
+    auth.recoveryMode = false
     unsubscribeRoom()
     ws.projects = []
     ws.archivedProjects = []
@@ -170,6 +177,11 @@
       }
       auth.sessionReady = true
       const { data: sub } = sb.auth.onAuthStateChange((event, session) => {
+        // Phase 11: a recovery session (email link) shows the reset
+        // form instead of the shell — even though the user IS signed
+        // in with that session. The flag is in-memory only; a fresh
+        // load without a recovery link never sets it.
+        if (event === 'PASSWORD_RECOVERY') auth.recoveryMode = true
         // handleAuthEvent never throws for auth-state reasons; guard the
         // listener anyway so a workspace-load hiccup cannot break the
         // auth subscription.
@@ -194,6 +206,11 @@
   <div class="flex min-h-screen items-center justify-center bg-base-100">
     <p class="opacity-70">در حال بارگذاری…</p>
   </div>
+{:else if route.name === 'reset-password' || auth.recoveryMode}
+  <!-- Phase 11: the reset form wins over the shell — a PASSWORD_RECOVERY
+       session IS a signed-in session, so the plain !auth.user check
+       below would hide the form behind the workspace. -->
+  <ResetPassword />
 {:else if !auth.user}
   <Login />
 {:else}
