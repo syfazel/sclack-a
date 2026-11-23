@@ -94,6 +94,28 @@ function check(name, cond, extra) {
     gfxSrc.includes('group.position.y = props.shiftY'))
   check('static: HeroScene shifts the logo up on landing (shiftY 1.9) and top-aligns the fallback',
     heroSrc.includes("shiftY: variant === 'landing' ? 1.9 : 0") && heroSrc.includes('justify-start pt-[9vh]'))
+
+  // 0.13.2 — landing compact controls: smaller + more transparent.
+  check('static: .input-landing exists (36px, alpha 0.65)',
+    cssSrc.includes('.input-landing') && cssSrc.includes('height: 36px') && cssSrc.includes('rgba(255, 255, 255, 0.65)'))
+  check('static: .btn-landing exists (36px) with a semi-transparent jigari primary (alpha 0.85)',
+    cssSrc.includes('.btn-landing') && cssSrc.includes('rgba(153, 27, 27, 0.85)'))
+  check('static: landing inputs/buttons fall back to opaque under reduced-transparency / simple mode',
+    cssSrc.includes('html.simple-mode .input-landing') && cssSrc.includes('html.simple-mode .btn-landing-primary'))
+  check('static: login uses the compact landing controls (input-landing, btn-landing, max-w-sm)',
+    loginSrc.includes('input-landing') && loginSrc.includes('btn-landing') && loginSrc.includes('max-w-sm'))
+  // Contrast: white text on the semi-transparent primary (0.85 jigari
+  // over the 0.55-white landing card) must stay >= 4.5 (AA).
+  const lum = (r, g, b) => {
+    const f = (c) => { c /= 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4) }
+    return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b)
+  }
+  const comp = (fg, bg) => fg.slice(0, 3).map((c, i) => Math.round((fg[3] ?? 1) * c + (1 - (fg[3] ?? 1)) * bg[i]))
+  const cardBg = comp([255, 255, 255, 0.55], [247, 248, 249])
+  const btnBg = comp([153, 27, 27, 0.85], cardBg)
+  const btnContrast = (Math.max(lum(255, 255, 255), lum(...btnBg)) + 0.05) / (Math.min(lum(255, 255, 255), lum(...btnBg)) + 0.05)
+  check('static: white text on the semi-transparent login button keeps AA contrast (>= 4.5)',
+    btnContrast >= 4.5, 'contrast ' + btnContrast.toFixed(2))
 }
 
 // ---------- in-memory stub backend (same shape as probe-doc-nest) ----------
@@ -479,6 +501,12 @@ async function main() {
   check('landing: sign-in form renders (email + password + ورود button)',
     !!w2.document.querySelector('input[type="email"]') && !!w2.document.querySelector('input[type="password"]') &&
     [...w2.document.querySelectorAll('button')].some((b) => b.textContent.trim() === 'ورود'))
+  check('landing: email + password inputs use the compact landing class',
+    !!w2.document.querySelector('input[type="email"].input-landing') && !!w2.document.querySelector('input[type="password"].input-landing'))
+  check('landing: login button uses the compact semi-transparent primary class',
+    [...w2.document.querySelectorAll('button')].some((b) => b.textContent.trim() === 'ورود' && b.classList.contains('btn-landing-primary')))
+  check('landing: card is the narrower max-w-sm',
+    !!w2.document.querySelector('.glass-card-landing.max-w-sm'))
   const realErrors2 = m2.errors.filter((e) => !/websocket|realtime/i.test(e))
   check('landing: 0 non-Realtime JS errors on the login mount', realErrors2.length === 0, JSON.stringify(realErrors2.slice(0, 3)))
   m2.dom.window.close()

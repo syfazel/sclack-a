@@ -79,12 +79,12 @@
       </div>
     {/await}
   </div>
-  <div class="card glass-card glass-card-landing relative z-10 w-full max-w-md shrink-0 shadow-xl">
-    <div class="card-body">
-      <div class="mb-2 flex items-center gap-3">
-        <LogoMark class="h-8 w-16" />
+  <div class="card glass-card glass-card-landing relative z-10 w-full max-w-sm shrink-0 shadow-xl">
+    <div class="card-body p-5">
+      <div class="mb-1 flex items-center gap-2">
+        <LogoMark class="h-6 w-12" />
         <div>
-          <h1 class="text-2xl font-bold">sclack_A</h1>
+          <h1 class="text-xl font-bold">sclack_A</h1>
           <p class="text-sm opacity-70">ورود به فضای کاری</p>
         </div>
       </div>
@@ -102,7 +102,7 @@
         <span class="label-text mb-1">ایمیل</span>
         <input
           type="email"
-          class="input input-sclack input-bordered w-full bg-base-100"
+          class="input input-landing input-bordered w-full"
           placeholder="name@example.com"
           bind:value={email}
           disabled={!isConfigured || busy}
@@ -113,7 +113,7 @@
         <span class="label-text mb-1">رمز عبور</span>
         <input
           type="password"
-          class="input input-sclack input-bordered w-full bg-base-100"
+          class="input input-landing input-bordered w-full"
           placeholder="••••••••"
           bind:value={password}
           disabled={!isConfigured || busy}
@@ -138,17 +138,17 @@
         </div>
       {/if}
 
-      <div class="mt-2 flex gap-2">
-        <button class="btn btn-sclack btn-primary flex-1" onclick={doSignIn} disabled={!isConfigured || busy}>
+      <div class="mt-1 flex gap-2">
+        <button class="btn btn-landing btn-landing-primary flex-1" onclick={doSignIn} disabled={!isConfigured || busy}>
           {busy ? '…' : 'ورود'}
         </button>
-        <button class="btn btn-sclack btn-outline flex-1" onclick={doSignUp} disabled={!isConfigured || busy}>
+        <button class="btn btn-landing btn-landing-outline flex-1" onclick={doSignUp} disabled={!isConfigured || busy}>
           ثبت‌نام
         </button>
       </div>
 
       <!-- Phase 11 (D10): password reset by email. -->
-      <div class="mt-3">
+      <div class="mt-2">
         <button
           type="button"
           class="btn btn-ghost btn-sm"
@@ -175,7 +175,7 @@
         {/if}
       </div>
 
-      <p class="mt-3 text-xs leading-5 opacity-70">
+      <p class="mt-2 text-xs leading-5 opacity-70">
         اگر ثبت‌نام به سقف نرخ ایمیل خورد، حساب از داشبورد Supabase ساخته می‌شود؛
         بعد با همان ایمیل و رمز وارد شوید.
       </p>

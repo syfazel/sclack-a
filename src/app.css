@@ -121,6 +121,43 @@ body {
   -webkit-backdrop-filter: blur(10px) saturate(var(--glass-saturate));
   backdrop-filter: blur(10px) saturate(var(--glass-saturate));
 }
+/* کنترل‌های فشردهٔ ورود (۰٫۱۳٫۲): فقط لندینگ — سیستم سراسری
+   (دکمه/ورودی ۴۴px، گردی ۱۴/۱۲px) دست نخورده است. ورودی ۳۶px با
+   شیشهٔ ۰٫۶۵؛ دکمهٔ اصلی جیگری ۰٫۸۵ (متن سفید روش ۶٫۱۸:۱، ‏AA)؛
+   دکمهٔ دوم شیشهٔ ۰٫۵۵ با متن جیگری. */
+.input-landing {
+  height: 36px;
+  min-height: 36px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.65);
+  -webkit-backdrop-filter: blur(8px) saturate(var(--glass-saturate));
+  backdrop-filter: blur(8px) saturate(var(--glass-saturate));
+  border: 1px solid rgba(17, 24, 39, 0.12);
+}
+.btn-landing {
+  height: 36px;
+  min-height: 36px;
+  border-radius: 12px;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+.btn-landing-primary {
+  background: rgba(153, 27, 27, 0.85);
+  -webkit-backdrop-filter: blur(8px) saturate(var(--glass-saturate));
+  backdrop-filter: blur(8px) saturate(var(--glass-saturate));
+  border: 1px solid rgba(153, 27, 27, 0.85);
+  color: #fff;
+}
+.btn-landing-primary:hover {
+  background: rgba(153, 27, 27, 0.95);
+}
+.btn-landing-outline {
+  background: rgba(255, 255, 255, 0.55);
+  -webkit-backdrop-filter: blur(8px) saturate(var(--glass-saturate));
+  backdrop-filter: blur(8px) saturate(var(--glass-saturate));
+  border: 1px solid rgba(17, 24, 39, 0.15);
+  color: var(--jigari);
+}
 .glass-modal {
   background: var(--glass-modal-tint);
   -webkit-backdrop-filter: blur(var(--glass-modal-blur)) saturate(var(--glass-saturate));
@@ -282,6 +319,19 @@ body {
   .light-mesh {
     background: linear-gradient(180deg, #ffffff 0%, #f9fafb 100%);
   }
+  /* کنترل‌های لندینگ: بدون شفافیت → مات (ورودی سفید، دکمهٔ اصلی جیگری مات). */
+  .input-landing,
+  .btn-landing-outline {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background: var(--color-base-100);
+  }
+  .btn-landing-primary {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background: var(--jigari-btn);
+    border-color: var(--jigari-btn);
+  }
 }
 html.simple-mode .glass-mild,
 html.simple-mode .glass-strong,
@@ -296,6 +346,19 @@ html.simple-mode .hero-control {
 }
 html.simple-mode .light-mesh {
   background: linear-gradient(180deg, #ffffff 0%, #f9fafb 100%);
+}
+/* کنترل‌های لندینگ در «حالت ساده»: بدون شفافیت → مات. */
+html.simple-mode .input-landing,
+html.simple-mode .btn-landing-outline {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  background: var(--color-base-100);
+}
+html.simple-mode .btn-landing-primary {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  background: var(--jigari-btn);
+  border-color: var(--jigari-btn);
 }
 html.simple-mode .anim-enter {
   animation: none;
