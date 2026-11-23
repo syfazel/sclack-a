@@ -13,6 +13,7 @@ import { JSDOM, VirtualConsole } from 'jsdom'
 import { readFileSync, readdirSync } from 'node:fs'
 import { countRooyeshFields, formCompletion, validateFormPercents, emptyFormAnswers, FORM_ROOYESH_46 } from '../src/lib/form-rooyesh.js'
 import { RULES_55, countRules, rulesByChapter, rulesForSection, unmappedRules } from '../src/lib/rules-aim.js'
+import { computeBudget, computeBurndown, computeGantt, GRANT_RIALLS } from '../src/lib/extract.js'
 
 const BASE_URL = 'https://probe-ref.supabase.co'
 const USER_ID = '11111111-1111-1111-1111-111111111111'
@@ -364,9 +365,8 @@ async function main() {
     a.equipment_pct = '70'
     a.assistant_pct = '40'
     const { warnings } = validateFormPercents(a)
-    // عددهای محاسبه‌شده در پیام‌ها لاتین‌اند (قرارداد موجود اپ: نشان «2»)،
-    // فقط عددهای ثابتِ متن فارسی‌اند.
-    return warnings.length === 4 && warnings.some((w) => w.includes('۴۰ تا ۶۰')) && warnings.some((w) => w.includes('110'))
+    // عددهای محاسبه‌شده در پیام‌ها با ارقام فارسی‌اند (faNum — قرارداد اپ).
+    return warnings.length === 4 && warnings.some((w) => w.includes('۴۰ تا ۶۰')) && warnings.some((w) => w.includes('۱۱۰'))
   })())
   check('pure: assistant cap warning (hard tech, 30% > 20%)', (() => {
     const a = emptyFormAnswers()
@@ -432,9 +432,9 @@ async function main() {
     const assistInput = w.document.querySelector('#assistant_pct')
     setInput(w, equipInput, '70')
     setInput(w, assistInput, '40')
-    await waitFor(w, () => w.document.body.textContent.includes('110'), 10000, 'percent-sum warning')
+    await waitFor(w, () => w.document.body.textContent.includes('۱۱۰'), 10000, 'percent-sum warning')
     check('phase 6: equip 70 + assist 40 warns the sum must be 100%',
-      w.document.body.textContent.includes('110'))
+      w.document.body.textContent.includes('۱۱۰'))
 
     // Idempotency: clicking the button again navigates to the SAME doc.
     w.document.querySelector('[data-create-form-doc]').click()
@@ -466,6 +466,95 @@ async function main() {
 
     const realErrors = m.errors.filter((e) => !/websocket|realtime/i.test(e))
     check('phase 6: 0 non-Realtime JS errors on the mount', realErrors.length === 0, JSON.stringify(realErrors.slice(0, 3)))
+    m.dom.window.close()
+  }
+
+  // ---------- phase 7: budget / burndown / gantt ----------
+  section('phase 7 pure: computeBudget / computeBurndown / computeGantt')
+  check('phase 7 pure: grant is 435,000,000 rials (1403 call)', GRANT_RIALLS === 435000000)
+  check('phase 7 pure: clean budget has no warnings', (() => {
+    const b = computeBudget([
+      { kind: 'تجهیزات', title: 'الف', amount: '100000000' },
+      { kind: 'دستیار پژوهشی', title: 'ب', amount: '20000000' }
+    ], { isSoftTech: false })
+    return b.total === 120000000 && b.equipmentTotal === 100000000 && b.assistantTotal === 20000000 &&
+      b.caps.training === 43500000 && b.caps.rnd === 261000000 && b.caps.personnel === 130500000 &&
+      b.warnings.length === 0
+  })())
+  check('phase 7 pure: over-budget case warns 3 times (total + rnd cap + assist share)', (() => {
+    const b = computeBudget([
+      { kind: 'تجهیزات', title: 'الف', amount: '300000000' },
+      { kind: 'دستیار پژوهشی', title: 'ب', amount: '100000000' },
+      { kind: 'تجهیزات', title: 'ج', amount: '50000000' }
+    ], { isSoftTech: false, equipmentPct: '70', assistantPct: '30' })
+    return b.total === 450000000 && b.warnings.length === 3
+  })())
+  check('phase 7 pure: burndown is null without tasks or window',
+    computeBurndown([], '2026-11-10T00:00:00.000Z', '2026-11-30T00:00:00.000Z') === null &&
+    computeBurndown([{ status: 'todo' }], null, null) === null)
+  check('phase 7 pure: burndown ideal line starts at the right (x=556) at total', (() => {
+    const bd = computeBurndown([
+      { status: 'done', completed_at: '2026-11-20T10:00:00.000Z' },
+      { status: 'todo' }, { status: 'todo' }
+    ], '2026-11-10T00:00:00.000Z', '2026-11-30T00:00:00.000Z', '2026-11-23T00:00:00.000Z')
+    return bd && bd.idealPoints.startsWith('556.0,12.0') && bd.total === 3 && bd.doneCount === 1 &&
+      bd.remaining === 2 && bd.behind === true
+  })())
+  check('phase 7 pure: gantt splits dated rows from undated', (() => {
+    const g = computeGantt([
+      { id: '1', title: 'الف', status: 'todo', created_at: '2026-11-10T00:00:00.000Z', due_at: '2026-11-20T00:00:00.000Z' },
+      { id: '2', title: 'ب', status: 'doing' }
+    ], '2026-11-10T00:00:00.000Z', '2026-11-30T00:00:00.000Z')
+    return g && g.rows.length === 1 && g.rows[0].x === 300 && g.rows[0].width === 292 &&
+      g.undated.length === 1 && g.undated[0] === 'ب'
+  })())
+  check('phase 7 pure: gantt is null without a window',
+    computeGantt([{ id: '1', title: 'الف', status: 'todo' }], null, null) === null)
+
+  section('phase 7 DOM: BudgetView (form cost rows + tasks)')
+  {
+    const db = makeDb()
+    const stub = makeStub(db)
+    const now = new Date().toISOString()
+    db.docs.push({
+      id: 'form-doc-1', project_id: PROJECT_ID, title: 'د — کاربرگ رسمی رویش (۴۶ سؤال)',
+      yjs_doc_id: 'p611-form', template_id: null, created_by: MEMBER_ID, created_at: now, updated_at: now,
+      version: 1, visibility: 'project',
+      custom_fields: {
+        form_kind: 'rooyesh-46',
+        form_def: FORM_ROOYESH_46,
+        form_answers: {
+          ...emptyFormAnswers(),
+          equipment_pct: '70',
+          assistant_pct: '30',
+          is_soft_tech: { value: 'no', detail: '' },
+          cost_rows: [
+            { kind: 'تجهیزات', title: 'الف', amount: '300000000' },
+            { kind: 'دستیار پژوهشی', title: 'ب', amount: '100000000' },
+            { kind: 'تجهیزات', title: 'ج', amount: '50000000' },
+            {}, {}, {}, {}, {}, {}, {}
+          ]
+        }
+      },
+      search_text: null, parent_id: null
+    })
+    const m = await mountApp({ html, js }, stub, '#/budget')
+    const { w } = m
+    await waitFor(w, () => w.document.querySelector('[data-budget]'), 10000, 'budget section')
+    check('phase 7: budget total shows ۴۵۰٬۰۰۰٬۰۰۰ rials from the form cost rows',
+      w.document.querySelector('[data-budget]')?.textContent.includes('۴۵۰٬۰۰۰٬۰۰۰') === true)
+    check('phase 7: grant-note (1403 call, check the current figure) is always shown',
+      w.document.body.textContent.includes('رقم گرنت از فراخوان ۱۴۰۳ است'))
+    check('phase 7: over-grant warning is shown',
+      w.document.querySelector('[data-budget]')?.textContent.includes('بیش از گرنت') === true)
+    check('phase 7: burndown SVG renders with 1 of 5 done',
+      !!w.document.querySelector('[data-burndown]') &&
+      w.document.body.textContent.includes('۱ از ۵ کار تمام‌شده'))
+    check('phase 7: gantt SVG renders with the undated list (کار بدون مهلت)',
+      !!w.document.querySelector('[data-gantt]') &&
+      w.document.body.textContent.includes('کار بدون مهلت'))
+    const realErrors = m.errors.filter((e) => !/websocket|realtime/i.test(e))
+    check('phase 7: 0 non-Realtime JS errors on the mount', realErrors.length === 0, JSON.stringify(realErrors.slice(0, 3)))
     m.dom.window.close()
   }
 

@@ -19,6 +19,8 @@
 // شرح فقط وقتی پاسخ «بله» است از فرم خواسته می‌شود.
 // مقدار stages: { rows: [...], description: '' }.
 
+import { faNum } from './extract.js'
+
 export const FORM_KIND = 'rooyesh-46'
 
 // ۱۸ حوزهٔ فناوری — عین سند طرح (بخش ۱-ب کاربرگ).
@@ -426,23 +428,23 @@ export function validateFormPercents(answers) {
   if (percents.length > 0) {
     const outOfRange = percents.filter((n) => n < 40 || n > 60)
     if (outOfRange.length > 0)
-      warnings.push('درصد هر مرحله باید ۴۰ تا ۶۰٪ باشد؛ ' + outOfRange.length + ' مرحله خارج از این بازه است.')
+      warnings.push('درصد هر مرحله باید ۴۰ تا ۶۰٪ باشد؛ ' + faNum(outOfRange.length) + ' مرحله خارج از این بازه است.')
     const sum = percents.reduce((a, b) => a + b, 0)
-    if (sum !== 100) warnings.push('جمع درصد مراحل ' + sum + '٪ است؛ باید ۱۰۰٪ شود.')
+    if (sum !== 100) warnings.push('جمع درصد مراحل ' + faNum(sum) + '٪ است؛ باید ۱۰۰٪ شود.')
   }
   const equip = Number(answers?.equipment_pct)
   const assist = Number(answers?.assistant_pct)
   const hasEquip = answers?.equipment_pct !== '' && !Number.isNaN(equip)
   const hasAssist = answers?.assistant_pct !== '' && !Number.isNaN(assist)
   if (hasEquip && hasAssist && equip + assist !== 100)
-    warnings.push('جمع درصد تجهیزات و دستیار پژوهشی ' + (equip + assist) + '٪ است؛ باید ۱۰۰٪ شود.')
+    warnings.push('جمع درصد تجهیزات و دستیار پژوهشی ' + faNum(equip + assist) + '٪ است؛ باید ۱۰۰٪ شود.')
   if (hasAssist) {
     const isSoft = answers?.is_soft_tech?.value === 'yes'
     const cap = isSoft ? 50 : 20
     if (assist > cap)
       warnings.push(
         'درصد دستیار پژوهشی ' +
-          assist +
+          faNum(assist) +
           '٪ است؛ سقف آن در فناوری ' +
           (isSoft ? 'نرم ۵۰٪' : 'سخت ۲۰٪') +
           ' است.'

@@ -1,5 +1,6 @@
 <script>
   import { setDocCustomFields } from '../lib/docs.js'
+  import { faNum } from '../lib/extract.js'
   import {
     FORM_GUIDE_NOTES,
     FORM_SUBMIT_EMAIL,
@@ -96,7 +97,7 @@
       {#if saveState === 'saving'}
         در حال ذخیره…
       {:else if saveState === 'saved'}
-        ذخیره شد ({completion.filled} از {completion.total} خانه — {completion.pct}٪)
+        ذخیره شد ({faNum(completion.filled)} از {faNum(completion.total)} خانه — {faNum(completion.pct)}٪)
       {:else}
         ذخیره نشد — دوباره تلاش کنید.
       {/if}
@@ -303,6 +304,6 @@
   {/each}
 
   <p class="text-xs text-[var(--ink-soft)]">
-    {countRooyeshFields(def)} خانهٔ شمارش‌شدهٔ کاربرگ رسمی رویش.
+    {faNum(countRooyeshFields(def))} خانهٔ شمارش‌شدهٔ کاربرگ رسمی رویش.
   </p>
 </div>

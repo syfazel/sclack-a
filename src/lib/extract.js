@@ -1142,3 +1142,194 @@ export function extractDocTaskSuggestions(text, docId, now = new Date(), limit =
   }
   return out
 }
+
+// ---------- فاز ۷: بودجه / برن‌داون / گانت (SVG دست‌ساز، بدون کتابخانه) ----------
+
+// گرنت فراخوان ۱۴۰۳ (D6 الف). رقم جاری نیست — رقم جاری گرنت باید از
+// فراخوان فعال پارک بررسی شود؛ پنل بودجه این را همیشه نشان می‌دهد.
+export const GRANT_RIALLS = 435000000
+// سرفصل‌های آیین‌نامه (۱۰ / ۶۰ / ۳۰) — سقف‌های مجاز بر مبنای گرنت.
+export const BUDGET_CAPS = { training: 0.1, rnd: 0.6, personnel: 0.3 }
+
+// بودجه از ردیف‌های جدول هزینه‌های فرم فاز ۶ (بخش ۲-ج کاربرگ).
+// نگاشت (مستند، نه حدس): ردیف «تجهیزات» زیر سقف تحقیق‌وتوسعهٔ ۶۰٪
+// می‌نشیند (آیین‌نامه: خرید قطعات و تجهیزات مورد نیاز اجرای پروژه از
+// هزینه‌های مجاز تحقیق‌وتوسعه است) و ردیف «دستیار پژوهشی» زیر سقف
+// نیروی انسانی ۳۰٪. سرفصل «آموزش» ۱۰٪ در فرم ردیفی ندارد — فقط سقفش
+// نشان داده می‌شود. هشدارها فقط وقتی جمع‌ها واقعاً از سقف گذشته‌اند.
+export function computeBudget(costRows, opts = {}) {
+  const grant = opts.grant ?? GRANT_RIALLS
+  const isSoftTech = opts.isSoftTech === true
+  const rows = (costRows || []).filter(
+    (r) => r && typeof r.amount !== 'undefined' && r.amount !== '' && !Number.isNaN(Number(r.amount))
+  )
+  const total = rows.reduce((a, r) => a + Number(r.amount), 0)
+  const equipmentTotal = rows
+    .filter((r) => r.kind === 'تجهیزات')
+    .reduce((a, r) => a + Number(r.amount), 0)
+  const assistantTotal = rows
+    .filter((r) => r.kind === 'دستیار پژوهشی')
+    .reduce((a, r) => a + Number(r.amount), 0)
+  const caps = {
+    training: Math.round(grant * BUDGET_CAPS.training),
+    rnd: Math.round(grant * BUDGET_CAPS.rnd),
+    personnel: Math.round(grant * BUDGET_CAPS.personnel)
+  }
+  const warnings = []
+  if (total > grant)
+    warnings.push(
+      'جمع ریز هزینه‌ها (' + faNum(total) + ' ریال) از گرنت (' + faNum(grant) + ' ریال) بیشتر است.'
+    )
+  if (equipmentTotal > caps.rnd)
+    warnings.push(
+      'جمع تجهیزات (' + faNum(equipmentTotal) + ' ریال) از سقف تحقیق‌وتوسعه (۶۰٪ گرنت) گذشته است.'
+    )
+  if (assistantTotal > caps.personnel)
+    warnings.push(
+      'جمع دستیار پژوهشی (' + faNum(assistantTotal) + ' ریال) از سقف نیروی انسانی (۳۰٪ گرنت) گذشته است.'
+    )
+  if (total > 0) {
+    const assistShareCap = isSoftTech ? 0.5 : 0.2
+    if (assistantTotal / total > assistShareCap)
+      warnings.push(
+        'سهم دستیار پژوهشی از کل هزینه‌ها بیش از ' +
+          faNum(Math.round(assistShareCap * 100)) +
+          '٪ است (سقف فناوری ' +
+          (isSoftTech ? 'نرم' : 'سخت') +
+          ').'
+      )
+  }
+  const equipPct = opts.equipmentPct
+  const assistPct = opts.assistantPct
+  if (
+    equipPct !== '' &&
+    equipPct !== null &&
+    equipPct !== undefined &&
+    assistPct !== '' &&
+    assistPct !== null &&
+    assistPct !== undefined &&
+    !Number.isNaN(Number(equipPct)) &&
+    !Number.isNaN(Number(assistPct)) &&
+    Number(equipPct) + Number(assistPct) !== 100
+  ) {
+    warnings.push(
+      'جمع درصد اعلام‌شدهٔ تجهیزات و دستیار پژوهشی ' +
+        faNum(Number(equipPct) + Number(assistPct)) +
+        '٪ است؛ باید ۱۰۰٪ شود.'
+    )
+  }
+  return {
+    grant,
+    total,
+    equipmentTotal,
+    assistantTotal,
+    caps,
+    byCategory: [
+      { key: 'training', label: 'آموزش', cap: caps.training, actual: 0, note: 'در فرم ردیفی ندارد' },
+      { key: 'rnd', label: 'تحقیق و توسعه', cap: caps.rnd, actual: equipmentTotal, note: 'ردیف‌های «تجهیزات»' },
+      { key: 'personnel', label: 'نیروی انسانی', cap: caps.personnel, actual: assistantTotal, note: 'ردیف‌های «دستیار پژوهشی»' }
+    ],
+    warnings,
+    grantNote: 'رقم گرنت از فراخوان ۱۴۰۳ است؛ رقم جاری باید از فراخوان فعال پارک بررسی شود.'
+  }
+}
+
+// برن‌داون: خط ایده‌آل (از کل کارها در شروع تا صفر در پایان، خطی) در
+// برابر خط واقعی (باقی‌مانده بر مبنای completed_at). محور زمان مثل
+// نمودار پالس راست‌به‌چپ است: شروع راست، پایان چپ. روزهای کاری از
+// start تا end؛ اگر start/end یا کارها نباشند null برمی‌گردد.
+export function computeBurndown(tasks, startIso, endIso, nowIso) {
+  const list = tasks || []
+  if (list.length === 0 || !startIso || !endIso) return null
+  const start = new Date(startIso)
+  const end = new Date(endIso)
+  const now = nowIso ? new Date(nowIso) : new Date()
+  if (!(start.getTime() <= end.getTime())) return null
+  const dayMs = 24 * 60 * 60 * 1000
+  const totalDays = Math.max(1, Math.round((end - start) / dayMs))
+  if (totalDays > 400) return null
+  const total = list.length
+  const doneAt = (dayEnd) => list.filter((t) => t.status === 'done' && t.completed_at && new Date(t.completed_at) <= dayEnd).length
+  const points = []
+  const labels = []
+  const horizon = now < end ? now : end
+  const horizonDays = Math.max(0, Math.round((horizon - start) / dayMs))
+  for (let i = 0; i <= horizonDays; i++) {
+    const dayEnd = new Date(start.getTime() + i * dayMs + dayMs - 1)
+    points.push({ day: i, remaining: total - doneAt(dayEnd) })
+    labels.push(i)
+  }
+  const W = 600
+  const H = 180
+  const PAD_L = 8
+  const PAD_R = 44
+  const PAD_T = 12
+  const PAD_B = 26
+  const x = (i) => W - PAD_R - (i / totalDays) * (W - PAD_L - PAD_R)
+  const y = (v) => H - PAD_B - (v / Math.max(1, total)) * (H - PAD_T - PAD_B)
+  const idealPoints = x(0).toFixed(1) + ',' + y(total).toFixed(1) + ' ' + x(totalDays).toFixed(1) + ',' + y(0).toFixed(1)
+  const actualPoints = points.map((p) => x(p.day).toFixed(1) + ',' + y(p.remaining).toFixed(1)).join(' ')
+  const idealNow = total * (1 - horizonDays / totalDays)
+  const actualNow = points.length > 0 ? points[points.length - 1].remaining : total
+  return {
+    width: W,
+    height: H,
+    total,
+    totalDays,
+    idealPoints,
+    actualPoints,
+    labels,
+    doneCount: list.filter((t) => t.status === 'done').length,
+    remaining: actualNow,
+    behind: actualNow > idealNow + 0.5,
+    startLabel: start.toISOString().slice(0, 10),
+    endLabel: end.toISOString().slice(0, 10)
+  }
+}
+
+// گانت: هر کارِ دارای created_at و due_at یک میله است (شروع راست،
+// پایان چپ — مثل بقیهٔ نمودارها)؛ کارهای بدون تاریخ در فهرست «بی‌زمان»
+// می‌آیند، نه در نمودار. اگر پنجرهٔ زمانی نباشد null برمی‌گردد.
+export function computeGantt(tasks, startIso, endIso) {
+  const list = tasks || []
+  if (!startIso || !endIso) return null
+  const start = new Date(startIso)
+  const end = new Date(endIso)
+  if (!(start.getTime() < end.getTime())) return null
+  const W = 600
+  const ROW_H = 34
+  const BAR_H = 10
+  const PAD_L = 8
+  const PAD_R = 8
+  const plotW = W - PAD_L - PAD_R
+  const span = end - start
+  const x = (t) => W - PAD_R - ((new Date(t) - start) / span) * plotW
+  const rows = []
+  const undated = []
+  for (const t of list) {
+    if (!t.created_at || !t.due_at) {
+      undated.push(t.title)
+      continue
+    }
+    const x1 = Math.max(W - PAD_R - plotW, Math.min(W - PAD_R, x(t.created_at)))
+    const x2 = Math.max(W - PAD_R - plotW, Math.min(W - PAD_R, x(t.due_at)))
+    const top = rows.length * ROW_H
+    rows.push({
+      taskId: t.id,
+      title: t.title,
+      status: t.status,
+      x: Math.min(x1, x2),
+      width: Math.max(2, Math.abs(x1 - x2)),
+      y: top + 16,
+      labelY: top + 11
+    })
+  }
+  return {
+    width: W,
+    height: Math.max(ROW_H, rows.length * ROW_H),
+    rows,
+    undated,
+    startLabel: start.toISOString().slice(0, 10),
+    endLabel: end.toISOString().slice(0, 10)
+  }
+}

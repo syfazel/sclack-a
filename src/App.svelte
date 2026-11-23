@@ -15,6 +15,7 @@
   import ChatView from './components/ChatView.svelte'
   import DocView from './components/DocView.svelte'
   import TasksView from './components/TasksView.svelte'
+  import BudgetView from './components/BudgetView.svelte'
   import AssistantView from './components/AssistantView.svelte'
   import MembersView from './components/MembersView.svelte'
   import NotificationsView from './components/NotificationsView.svelte'
@@ -36,6 +37,7 @@
     if (h === '/' || h === '') return { name: 'home' }
     if (h === '/rooms') return { name: 'rooms' }
     if (h === '/tasks') return { name: 'tasks' }
+    if (h === '/budget') return { name: 'budget' }
     if (h === '/assistant') return { name: 'assistant' }
     if (h === '/members') return { name: 'members' }
     if (h === '/notifications') return { name: 'notifications' }
@@ -228,6 +230,8 @@
         <DocView docId={route.docId} />
       {:else if route.name === 'tasks'}
         <TasksView />
+      {:else if route.name === 'budget'}
+        <BudgetView />
       {:else if route.name === 'assistant'}
         <AssistantView />
       {:else if route.name === 'members'}

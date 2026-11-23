@@ -538,6 +538,9 @@
           <span class="badge badge-sm doc-tree-count" data-open-task-count>{openTaskCount}</span>
         {/if}
       </a>
+      <a href="#/budget" class="btn btn-ghost btn-sm mt-1 w-full justify-start px-2">
+        <span class="hidden lg:inline">بودجه و زمان‌بندی</span>
+      </a>
     {/if}
   </section>
 
