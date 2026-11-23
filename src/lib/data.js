@@ -201,7 +201,22 @@ export async function updateProject(project, { name, description, goal, finalOut
     if (error.code === '23505' || /duplicate key/i.test(error.message || '')) {
       throw new Error('پروژه‌ای با این نام هست؛ نام دیگری انتخاب کنید.')
     }
+    // Expired session → the request runs as anon → RLS lets zero rows
+    // through → .single() answers 406 PGRST116 ("Cannot coerce the
+    // result to a single JSON object"). The raw PostgREST text says
+    // nothing about the cause, so translate it to a clear Persian
+    // message instead of showing the raw error.
+    const msg = error.message || ''
+    if (
+      error.code === 'PGRST116' ||
+      (/coerce/i.test(msg) && /single JSON/i.test(msg))
+    ) {
+      throw new Error('پروژه به‌روز نشد — نشست شما تمام شده یا دسترسی ندارید؛ دوباره وارد شوید.')
+    }
     throw error
+  }
+  if (!data) {
+    throw new Error('پروژه به‌روز نشد — نشست شما تمام شده یا دسترسی ندارید؛ دوباره وارد شوید.')
   }
   await loadWorkspace()
   return data

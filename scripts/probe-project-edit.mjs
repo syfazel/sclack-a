@@ -91,6 +91,12 @@ function makeDb() {
 
 function makeStub(db) {
   const calls = { projectPatch: [] }
+  // Case 7 flag: when true, PATCH on projects answers 406 PGRST116
+  // without touching any row — the PostgREST answer under anon RLS
+  // when an expired session lets zero rows through. The stub cannot
+  // make the live row vanish (the card needs it), so the flag is the
+  // minimal way to drive the zero-row path.
+  const flags = { denyProjectPatch: false }
 
   function ilikeMatch(value, pattern) {
     let p = pattern
@@ -189,10 +195,13 @@ function makeStub(db) {
 
     if (method === 'PATCH') {
       const body = bodyText ? JSON.parse(bodyText) : {}
+      if (table === 'projects' && flags.denyProjectPatch) {
+        return json({ message: 'JSON object requested, multiple (or no) rows returned', code: 'PGRST116' }, 406)
+      }
       const matched = rows.filter((r) => rowMatches(r, params))
       for (const r of matched) Object.assign(r, body)
       if (table === 'projects') calls.projectPatch.push({ id: matched.map((r) => r.id), body })
-      if (single) return matched.length === 1 ? json(matched[0]) : json({ message: 'JSON object requested, multiple (or no) rows returned' }, 406)
+      if (single) return matched.length === 1 ? json(matched[0]) : json({ message: 'JSON object requested, multiple (or no) rows returned', code: 'PGRST116' }, 406)
       return new Response(null, { status: 204 })
     }
 
@@ -221,7 +230,7 @@ function makeStub(db) {
     return json({ error: 'stub: unknown url ' + url }, 404)
   }
 
-  return { calls, stubFetch, db }
+  return { calls, stubFetch, db, flags }
 }
 
 // ---------- fake session ----------
@@ -453,6 +462,28 @@ async function main() {
   check('scope: «بستن پروژه» still on the card', [...card6.querySelectorAll('button')].some((b) => b.textContent.trim() === 'بستن پروژه'))
   check('scope: «حذف پروژه» still on the card (creator)', [...card6.querySelectorAll('button')].some((b) => b.textContent.trim() === 'حذف پروژه'))
   check('scope: the second project was never touched', stub.db.projects.find((p) => p.id === PROJECT2_ID).name === 'پروژهٔ دوم' && stub.db.projects.find((p) => p.id === PROJECT2_ID).custom_fields.goal === 'هدف دوم')
+
+  // ---- Case 7: expired session → RLS zero rows → 406 PGRST116 → clear message, nothing written ----
+  // (Live incident 2026-11-23 09:15–09:18: project-edit save answered
+  // «Cannot coerce the result to a single JSON object» twice after the
+  // session had expired. The stub flag makes PATCH on projects answer
+  // 406 PGRST116 without mutating, exactly like PostgREST under anon RLS.)
+  stub.flags.denyProjectPatch = true
+  const card7 = projectCard(w, projectsSection(w))
+  const editBtn7 = card7.querySelector('button[aria-label^="ویرایش پروژهٔ"]')
+  editBtn7.click()
+  const editForm7 = await waitFor(w, () => w.document.querySelector('[data-edit-form]'), 5000, 'edit form opens (case 7)')
+  const goalInput7 = editForm7.querySelector('input[placeholder="هدف پروژه *"]')
+  setInput(w, goalInput7, 'هدفِ ردشده')
+  const saveBtn7 = [...editForm7.querySelectorAll('button')].find((b) => b.textContent.trim() === 'ذخیرهٔ تغییرات')
+  saveBtn7.click()
+  await sleep(900)
+  check('expired-session: clear Persian message shown in the form', editForm7.textContent.includes('پروژه به‌روز نشد — نشست شما تمام شده یا دسترسی ندارید؛ دوباره وارد شوید.'))
+  check('expired-session: raw PostgREST text is NOT shown', !/coerce|single JSON/i.test(editForm7.textContent))
+  check('expired-session: row untouched', projectRow(w).custom_fields.goal === 'هدف تازه' && projectRow(w).name === 'پروژهٔ تازه')
+  check('expired-session: no PATCH recorded', stub.calls.projectPatch.length === 2, 'patches: ' + stub.calls.projectPatch.length)
+  check('expired-session: form stays open after the rejection', !!w.document.querySelector('[data-edit-form]'))
+  stub.flags.denyProjectPatch = false
 
   // ---- JS errors (excluding Realtime/WebSocket noise) ----
   const realErrors = m1.errors.filter((e) => !/websocket|realtime/i.test(e))
