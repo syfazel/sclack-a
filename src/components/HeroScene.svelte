@@ -42,7 +42,10 @@
         mode: variant === 'home' ? 'light' : undefined,
         view: 'logo',
         calm: variant === 'home',
-        onlineCount
+        onlineCount,
+        // 0.13.1: on landing the logo sits in the free upper zone above
+        // the login card (the card no longer covers it).
+        shiftY: variant === 'landing' ? 1.9 : 0
       })
       if (!handle.webgl) {
         handle.dispose()
@@ -115,7 +118,9 @@
   {#if mode === 'fallback' || mode === 'loading'}
     <!-- fallback ایستا (G9): همان لوگو + مش روشن؛ صفحه هرگز خالی نمی‌ماند -->
     <div
-      class="absolute inset-0 flex flex-col items-center justify-center gap-3"
+      class="absolute inset-0 flex flex-col items-center gap-3 {variant === 'landing'
+        ? 'justify-start pt-[9vh]'
+        : 'justify-center'}"
       data-hero-fallback
     >
       <LogoMark class="h-16 w-32 opacity-90" />

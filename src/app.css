@@ -112,6 +112,15 @@ body {
   box-shadow: 0 8px 32px rgba(16, 24, 40, 0.08);
   color: #101828;
 }
+/* کارت ورود (۰٫۱۳٫۱): شیشهٔ شفاف‌تر از کارت معمولی — آرم سه‌بعدی
+   دیگر پشت آن نیست، ولی ذره‌های محیطی از پشتش دیده می‌شوند؛ متن روی
+   مش روشن با ورودی‌های مات خوانا می‌ماند. آلفای کارت معمولی (۰٫۷۲)
+   دست نخورده است. */
+.glass-card-landing {
+  background: rgba(255, 255, 255, 0.55);
+  -webkit-backdrop-filter: blur(10px) saturate(var(--glass-saturate));
+  backdrop-filter: blur(10px) saturate(var(--glass-saturate));
+}
 .glass-modal {
   background: var(--glass-modal-tint);
   -webkit-backdrop-filter: blur(var(--glass-modal-blur)) saturate(var(--glass-saturate));
@@ -235,6 +244,7 @@ body {
   .glass-mild,
   .glass-strong,
   .glass-card,
+  .glass-card-landing,
   .glass-modal,
   .hero-control {
     -webkit-backdrop-filter: blur(8px) saturate(var(--glass-saturate));
@@ -261,6 +271,7 @@ body {
   .glass-mild,
   .glass-strong,
   .glass-card,
+  .glass-card-landing,
   .glass-modal,
   .hero-control {
     -webkit-backdrop-filter: none;
@@ -275,6 +286,7 @@ body {
 html.simple-mode .glass-mild,
 html.simple-mode .glass-strong,
 html.simple-mode .glass-card,
+html.simple-mode .glass-card-landing,
 html.simple-mode .glass-modal,
 html.simple-mode .hero-control {
   -webkit-backdrop-filter: none;

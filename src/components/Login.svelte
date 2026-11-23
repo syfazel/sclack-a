@@ -58,7 +58,16 @@
 <!-- G1 — ورود/لندینگ: صحنهٔ زندهٔ Three.js پشت کارت شیشه‌ای ورود.
      HeroScene با import() پویا لود می‌شود (three در باندل اولیه نیست)؛
      اگر چانک نرسید، مش روشن + لوگو می‌نشیند و صفحه خالی نمی‌ماند. -->
-<div class="relative flex min-h-screen items-center justify-center px-4 py-10">
+<div class="relative flex min-h-screen flex-col items-center justify-center px-4 pb-24 pt-10">
+  <!-- 0.13.1: the 3D emblem lives in this free upper zone — the spacer
+       keeps the login card below it so the logo is never covered. The
+       spacer is transparent and pointer-transparent: the scene behind
+       it stays visible and draggable. -->
+  <div
+    class="pointer-events-none relative z-10 h-[36vh] min-h-[220px] w-full shrink-0"
+    data-landing-emblem-zone
+    aria-hidden="true"
+  ></div>
   <div class="absolute inset-0">
     {#await import('./HeroScene.svelte')}
       <div class="light-mesh absolute inset-0"></div>
@@ -70,7 +79,7 @@
       </div>
     {/await}
   </div>
-  <div class="card glass-card relative z-10 w-full max-w-md shadow-xl">
+  <div class="card glass-card glass-card-landing relative z-10 w-full max-w-md shrink-0 shadow-xl">
     <div class="card-body">
       <div class="mb-2 flex items-center gap-3">
         <LogoMark class="h-8 w-16" />

@@ -189,6 +189,11 @@ export function create(container, props = {}) {
   const camera = new THREE.PerspectiveCamera(45, 640 / 320, 0.1, 100)
   const group = new THREE.Group()
   scene.add(group)
+  // Landing framing (0.13.1): the login card sits in the lower half, so
+  // the logo group is shifted up into the free upper zone. Rotation and
+  // burst only touch group.rotation / particle positions, never
+  // group.position, so the shift persists.
+  if (props.shiftY) group.position.y = props.shiftY
 
   const curve = new THREE.CatmullRomCurve3(sCurvePoints())
   const tube = new THREE.Mesh(
@@ -487,6 +492,7 @@ export function create(container, props = {}) {
         cameraPosition: [camera.position.x, camera.position.y, camera.position.z],
         cameraTarget: [cameraTarget.x, cameraTarget.y, cameraTarget.z],
         groupChildren: group.children.length,
+        groupPositionY: group.position.y,
         disposed: state.disposed
       }
     }

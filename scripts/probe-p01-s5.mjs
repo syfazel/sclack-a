@@ -139,6 +139,14 @@ async function unitTests() {
       const dots = handle.group.children.filter((o) => o.geometry?.type === 'SphereGeometry')
       return dots.length === 4 && dots.filter((d) => d.material.opacity === 1).length === 2
     })())
+  // 0.13.1 — landing framing: shiftY lifts the logo group out from
+  // behind the login card.
+  const containerShift = w.document.createElement('div')
+  w.document.body.appendChild(containerShift)
+  const handleShift = g.create(containerShift, { shiftY: 1.9 })
+  check('S5 unit: create() with shiftY lifts the logo group (groupPositionY 1.9)',
+    handleShift.getState().groupPositionY === 1.9)
+  handleShift.dispose()
   // Drag with real pointer events.
   container.dispatchEvent(new w.MouseEvent('pointerdown', { bubbles: true, clientX: 100, clientY: 100 }))
   container.dispatchEvent(new w.MouseEvent('pointermove', { bubbles: true, clientX: 150, clientY: 100 }))

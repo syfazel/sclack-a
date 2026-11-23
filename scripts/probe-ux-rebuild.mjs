@@ -76,6 +76,24 @@ function check(name, cond, extra) {
     .map((f) => readFileSync(new URL('../src/' + f, import.meta.url), 'utf8')).join('\n')
   const warmInSrc = ['warm-mesh', 'amber-', '#d97706', '#f97066', '#7c3aed', '--ai-accent', 'glass-chrome'].filter((t) => srcAll.includes(t))
   check('static: zero warm tokens in the rebuilt sources', warmInSrc.length === 0, 'found: ' + warmInSrc.join(', '))
+
+  // 0.13.1 — landing framing: the 3D emblem must never sit behind the
+  // login card (the card was 0.72-opaque and centered on the logo).
+  const loginSrc = readFileSync(new URL('../src/components/Login.svelte', import.meta.url), 'utf8')
+  const heroSrc = readFileSync(new URL('../src/components/HeroScene.svelte', import.meta.url), 'utf8')
+  const gfxSrc = readFileSync(new URL('../src/lib/graphics.js', import.meta.url), 'utf8')
+  check('static: landing has a transparent emblem zone above the card (data-landing-emblem-zone)',
+    loginSrc.includes('data-landing-emblem-zone'))
+  check('static: login card uses the transparent landing glass (glass-card-landing)',
+    loginSrc.includes('glass-card-landing'))
+  check('static: .glass-card-landing exists in app.css with alpha 0.55 (more transparent than the 0.72 card)',
+    cssSrc.includes('.glass-card-landing') && cssSrc.includes('rgba(255, 255, 255, 0.55)'))
+  check('static: .glass-card-landing falls back to opaque under reduced-transparency / simple mode',
+    cssSrc.includes('html.simple-mode .glass-card-landing'))
+  check('static: graphics create() applies props.shiftY to group.position.y',
+    gfxSrc.includes('group.position.y = props.shiftY'))
+  check('static: HeroScene shifts the logo up on landing (shiftY 1.9) and top-aligns the fallback',
+    heroSrc.includes("shiftY: variant === 'landing' ? 1.9 : 0") && heroSrc.includes('justify-start pt-[9vh]'))
 }
 
 // ---------- in-memory stub backend (same shape as probe-doc-nest) ----------
@@ -274,7 +292,7 @@ function loadBundle() {
   return { html, js: readFileSync(distDir + 'assets/' + jsFile, 'utf8'), jsFile }
 }
 
-async function mountApp({ html, js }, stub, hash) {
+async function mountApp({ html, js }, stub, hash, opts = {}) {
   const errors = []
   const virtualConsole = new VirtualConsole()
   virtualConsole.on('jsdomError', (e) => errors.push('jsdomError: ' + (e.message || e)))
@@ -301,7 +319,7 @@ async function mountApp({ html, js }, stub, hash) {
     }
   }
   w.fetch = stub.stubFetch
-  w.localStorage.setItem('sb-probe-ref-auth-token', JSON.stringify(fakeSession()))
+  if (!opts.noSession) w.localStorage.setItem('sb-probe-ref-auth-token', JSON.stringify(fakeSession()))
   w.addEventListener('error', (e) => errors.push('window.error: ' + (e.message || e)))
   try {
     const jsForEval = js
@@ -449,6 +467,21 @@ async function main() {
   // ---- JS errors on the main mount (excluding Realtime/WebSocket noise) ----
   const realErrors = m1.errors.filter((e) => !/websocket|realtime/i.test(e))
   check('mount: 0 non-Realtime JS errors', realErrors.length === 0, JSON.stringify(realErrors.slice(0, 3)))
+
+  // ---- Mount B: login screen (no session) — 0.13.1 landing framing ----
+  const m2 = await mountApp({ html, js }, stub, '#/', { noSession: true })
+  const w2 = m2.dom.window
+  await waitFor(w2, () => w2.document.body.textContent.includes('ورود'), 10000, 'login form')
+  check('landing: emblem zone spacer exists above the card',
+    !!w2.document.querySelector('[data-landing-emblem-zone]'))
+  check('landing: login card uses the transparent landing glass',
+    !!w2.document.querySelector('.glass-card-landing'))
+  check('landing: sign-in form renders (email + password + ورود button)',
+    !!w2.document.querySelector('input[type="email"]') && !!w2.document.querySelector('input[type="password"]') &&
+    [...w2.document.querySelectorAll('button')].some((b) => b.textContent.trim() === 'ورود'))
+  const realErrors2 = m2.errors.filter((e) => !/websocket|realtime/i.test(e))
+  check('landing: 0 non-Realtime JS errors on the login mount', realErrors2.length === 0, JSON.stringify(realErrors2.slice(0, 3)))
+  m2.dom.window.close()
 
   m1.dom.window.close()
   console.log(failures === 0 ? 'ALL UX-REBUILD PROBES PASSED' : `${failures} PROBE(S) FAILED`)
