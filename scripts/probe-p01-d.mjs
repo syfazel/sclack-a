@@ -561,10 +561,18 @@ async function main() {
   check('D1: today reminder shown, tomorrow reminder NOT shown', guardianText().includes('یادآوری امروز') && !guardianText().includes('یادآوری فردا'))
   check('D1: every guardian task links to #/tasks', [...w.document.querySelectorAll('[data-guardian-task] a')].every((a) => a.getAttribute('href') === '#/tasks'))
 
-  // Notification pointer: exactly one, for the overdue task, viewer only.
-  check('D1: exactly 1 notification row after the summary', db.notifications.length === 1, JSON.stringify(db.notifications))
+  // R8 (پکیج A): ثبت اشاره‌گر یادآوری دیگر خودکار/بی‌صدا نیست — خلاصه
+  // به‌تنهایی چیزی ثبت نمی‌کند؛ UI اعلام می‌کند و فقط با تپ ثبت می‌شود.
+  check('D1: summary alone records no pointer (R8)', db.notifications.length === 0, JSON.stringify(db.notifications))
+  check('D1: announcement says an overdue task has no pointer yet', guardianText().includes('هنوز یادآوری ثبت نشده'), guardianText().slice(0, 300))
+  const recordBtn = w.document.querySelector('[data-guardian-record]')
+  check('D1: record-reminder button exists', !!recordBtn)
+  recordBtn.click()
+  await waitFor(w, () => db.notifications.length === 1, 10000, 'pointer recorded after the tap')
+  check('D1: exactly 1 notification row after the tap', db.notifications.length === 1, JSON.stringify(db.notifications))
   const n0 = db.notifications[0]
   check('D1: pointer is type=reminder for the overdue task, viewer as user', !!n0 && n0.type === 'reminder' && n0.target_id === 'task-overdue' && n0.user_id === MEMBER_ID, JSON.stringify(n0))
+  check('D1: after the tap, the recorded message shows', guardianText().includes('اعلان یادآوری ثبت شد'), guardianText().slice(0, 300))
   // Idempotent: a second summary records no duplicate.
   clickButton(w, w.document, 'خلاصهٔ امروز')
   await sleep(800)
@@ -596,7 +604,7 @@ async function main() {
   check('D2 chat: verbatim quotes shown', chatText().includes(MSG1) && chatText().includes(MSG2))
   check('D2 chat: every suggestion labelled «پیشنهاد — هنوز ساخته نشده»', chatRows.every((r) => r.textContent.includes('پیشنهاد — هنوز ساخته نشده')))
   check('D2 chat: Zahra shown as suggested assignee of her message', chatRows.find((r) => r.getAttribute('data-chat-suggestion') === 'msg-1').textContent.includes('زهرا'))
-  check('D2 chat: suggested due dates shown', chatRows.every((r) => r.textContent.includes('سررسید پیشنهادی')))
+  check('D2 chat: suggested due dates shown', chatRows.every((r) => r.textContent.includes('سررسید پیش‌فرض')))
 
   // Before any tap, no new task rows exist.
   check('D2 chat: before the tap, still exactly the 5 seeded tasks', db.tasks.length === 5, String(db.tasks.length))
