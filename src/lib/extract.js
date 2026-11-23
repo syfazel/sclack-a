@@ -58,6 +58,17 @@ export function computeProjectReview({ tasks, docs, files }, now = new Date()) {
   return { todo, doing, done, overdue, docs: (docs || []).length, newFiles }
 }
 
+// H1-4: default project for the home progress ring — the current
+// project when it is in the list, else the first project that has
+// tasks, else the first project. Pure, so the probe can pin it.
+export function pickProgressProjectId(projects, tasks, currentProjectId) {
+  const list = projects || []
+  if (currentProjectId && list.some((p) => p.id === currentProjectId)) return currentProjectId
+  const withTasks = list.find((p) => (tasks || []).some((t) => t.project_id === p.id))
+  if (withTasks) return withTasks.id
+  return list[0]?.id || null
+}
+
 export const TASK_STATUS_LABEL = {
   todo: 'باز',
   doing: 'در حال انجام',
@@ -710,7 +721,11 @@ const CHART_PAD_B = 26
 
 export function computePulseChart(days) {
   const list = days || []
-  const max = Math.max(1, ...list.map((d) => Math.max(d.messages || 0, d.done || 0)))
+  // H1-5: the y-axis max is at least 5, so a single message does not
+  // draw a mountain — and gridlines + value labels make the scale
+  // readable instead of misleading.
+  const rawMax = Math.max(1, ...list.map((d) => Math.max(d.messages || 0, d.done || 0)))
+  const max = Math.max(5, rawMax)
   const step = list.length > 1 ? (CHART_W - CHART_PAD_L - CHART_PAD_R) / (list.length - 1) : 0
   const x = (i) => CHART_W - CHART_PAD_R - i * step
   const y = (v) => CHART_H - CHART_PAD_B - (v / max) * (CHART_H - CHART_PAD_T - CHART_PAD_B)
@@ -720,6 +735,7 @@ export function computePulseChart(days) {
     x(0).toFixed(1) + ',' + (CHART_H - CHART_PAD_B).toFixed(1) + ' ' +
     pts(key) + ' ' +
     x(list.length - 1).toFixed(1) + ',' + (CHART_H - CHART_PAD_B).toFixed(1)
+  const gridValues = [...new Set([0, Math.round(max / 2), max])].sort((a, b) => a - b)
   return {
     width: CHART_W,
     height: CHART_H,
@@ -728,7 +744,8 @@ export function computePulseChart(days) {
     donePoints: pts('done'),
     messagesArea: area('messages'),
     doneArea: area('done'),
-    labels: list.map((d, i) => ({ x: x(i), label: d.label }))
+    labels: list.map((d, i) => ({ x: x(i), label: d.label })),
+    gridlines: gridValues.map((value) => ({ value, y: y(value) }))
   }
 }
 

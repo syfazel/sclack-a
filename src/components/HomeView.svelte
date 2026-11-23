@@ -25,7 +25,8 @@
     computeTeamPulse,
     computePulseChart,
     buildRecentActivity,
-    computeProjectReview
+    computeProjectReview,
+    pickProgressProjectId
   } from '../lib/extract.js'
   import { formatFileSize } from '../lib/docs.js'
   import FileList from './FileList.svelte'
@@ -46,9 +47,11 @@
 
   let closeError = $state('')
   let closingId = $state(null)
+  // H1-1: closing is two-tap in-app, like delete — no native dialog.
+  let armCloseProjectId = $state(null)
 
   // G1 item 8 — project delete: creator only (w1), two-tap in-app
-  // confirm with a warning (no native confirm()). A delete that the
+  // confirm with a warning (no native dialog). A delete that the
   // pre-check refuses (other members' rows, versioned docs) shows its
   // clear error under the projects list instead of deleting anything.
   let armDeleteProjectId = $state(null)
@@ -216,7 +219,13 @@
       })
       .slice(0, 4)
   )
-  const progressId = $derived(progressProjectId || ws.projects[0]?.id || null)
+  // H1-4: the progress ring defaults to the current project, else the
+  // first project that has tasks, else the first project — so the ring
+  // never says «هنوز کاری نیست» while «کارهای من» shows open tasks.
+  const progressId = $derived(
+    progressProjectId ||
+      pickProgressProjectId(ws.projects, pulse.tasks, ws.currentProjectId)
+  )
   const progressReview = $derived.by(() => {
     if (!progressId) return null
     return computeProjectReview(
@@ -385,11 +394,16 @@
     }
   }
 
-  // P01 A5 — close = archive, not delete. Two-step confirm; docs, files
-  // and tasks stay readable afterwards.
+  // P01 A5 — close = archive, not delete. Two-step in-app confirm
+  // (H1-1, same pattern as delete); docs, files and tasks stay
+  // readable afterwards.
   async function doCloseProject(p) {
+    if (armCloseProjectId !== p.id) {
+      armCloseProjectId = p.id
+      return
+    }
+    armCloseProjectId = null
     if (closingId) return
-    if (!confirm('پروژه «' + p.name + '» بسته و به بایگانی می‌رود. سند و فایل و کارهایش خواندنی می‌مانند. ادامه می‌دهید؟')) return
     closingId = p.id
     closeError = ''
     try {
@@ -412,7 +426,7 @@
   <!-- G2 — هیروی خانه: «سلام + کارهای امروز»؛ صحنهٔ آرام (سبک، کند)
        پشت کارت شیشه‌ای. حرکت نباید خواندن کارهای امروز را بگیرد. -->
   <section class="relative col-span-1 overflow-hidden rounded-3xl md:col-span-2 lg:col-span-12" data-home-hero data-home-card="greeting">
-    <div class="relative h-60">
+    <div class="relative h-44">
       {#await import('./HeroScene.svelte')}
         <div class="light-mesh absolute inset-0"></div>
       {:then { default: HeroScene }}
@@ -472,6 +486,7 @@
       <p class="mt-2 text-sm opacity-70">در حال بارگذاری…</p>
     {:else if myTasks.length === 0}
       <p class="mt-2 text-sm opacity-70">کاری به تو سپرده نشده</p>
+      <a href="#/tasks" class="btn btn-sm btn-sclack-secondary mt-3">رفتن به کارها</a>
     {:else}
       <ul class="mt-2 space-y-2" data-my-tasks-list>
         {#each myTasks as t (t.id)}
@@ -482,7 +497,7 @@
               checked={t.status === 'done'}
               onchange={() => toggleMyTask(t)}
             />
-            <span class="min-w-0 flex-1 truncate {t.status === 'done' ? 'line-through opacity-60' : ''}">
+            <span class="min-w-0 flex-1 line-clamp-2 {t.status === 'done' ? 'line-through opacity-60' : ''}">
               {t.title}
             </span>
             {#if t.due_at}
@@ -597,7 +612,7 @@
       <ul class="mt-2 space-y-2" data-reminders-list>
         {#each remindersList as r}
           <li class="flex items-center gap-2 text-sm">
-            <a href={r.link} class="min-w-0 flex-1 truncate">{r.text}</a>
+            <a href={r.link} class="min-w-0 flex-1 line-clamp-2">{r.text}</a>
             <span class="shrink-0 text-xs opacity-60">{r.at ? jalaliDayLabel(r.at) : 'بدون تاریخ'}</span>
           </li>
         {/each}
@@ -693,6 +708,10 @@
         >
           <polygon points={chart.messagesArea} fill="rgba(127,29,29,0.10)" />
           <polygon points={chart.doneArea} fill="rgba(21,128,61,0.10)" />
+          {#each chart.gridlines as g}
+            <line x1="8" x2="556" y1={g.y} y2={g.y} stroke="rgba(16,24,40,0.10)" stroke-width="1" />
+            <text x="594" y={g.y + 4} text-anchor="end" font-size="11" fill="rgba(16,24,40,0.55)">{faNum(g.value)}</text>
+          {/each}
           <polyline
             points={chart.messagesPoints}
             fill="none"
@@ -751,7 +770,7 @@
   <!-- P01 A1: project creation form -->
   <section class="mt-6">
     <h2 class="mb-2 text-lg font-bold">ساختن پروژهٔ تازه</h2>
-    <div class="card bg-base-200">
+    <div class="card glass-card">
       <div class="card-body gap-2">
         <input
           class="input input-bordered input-sclack w-full bg-base-100"
@@ -879,18 +898,23 @@
                   </button>
                 {/if}
                 <button
-                  class="btn btn-ghost btn-sm"
+                  class="btn btn-ghost btn-sm {armCloseProjectId === p.id ? 'btn-error' : ''}"
                   onclick={() => doCloseProject(p)}
                   disabled={closingId === p.id}
                   title="بستن پروژه — به بایگانی می‌رود، پاک نمی‌شود"
                 >
-                  بستن پروژه
+                  {armCloseProjectId === p.id ? 'مطمئنید؟ بستن پروژه' : 'بستن پروژه'}
                 </button>
               </div>
               {#if armDeleteProjectId === p.id}
                 <p class="mt-1 text-xs text-error">
                   با تپ دوم، همهٔ اتاق‌ها، پیام‌ها، سندها، فایل‌ها و کارهای پروژه پاک می‌شوند و
                   برنمی‌گردند.
+                </p>
+              {/if}
+              {#if armCloseProjectId === p.id}
+                <p class="mt-1 text-xs text-error">
+                  با تپ دوم، پروژه بسته و به بایگانی می‌رود؛ سند و فایل و کارهایش خواندنی می‌مانند.
                 </p>
               {/if}
               {#if editingProjectId === p.id}

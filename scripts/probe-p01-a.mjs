@@ -562,7 +562,15 @@ async function main() {
   allErrors.push(...m1a.errors)
   await waitFor(wa, () => [...wa.document.querySelectorAll('button')].some((b) => b.textContent.trim() === 'بستن پروژه'), 10000, 'close button on card')
   const closeBtn2 = [...wa.document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'بستن پروژه')
+  // H1-1: closing is two-tap in-app now — the first tap only arms.
   closeBtn2.click()
+  await sleep(500)
+  check('H1: first tap on «بستن پروژه» only arms (project not archived yet)',
+    db1.projects[0].archived !== true &&
+    wa.document.body.textContent.includes('با تپ دوم، پروژه بسته و به بایگانی می‌رود'))
+  const closeBtn3 = [...wa.document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'مطمئنید؟ بستن پروژه')
+  check('H1: armed close button relabels to «مطمئنید؟ بستن پروژه»', !!closeBtn3)
+  closeBtn3.click()
   await waitFor(wa, () => db1.projects[0].archived === true, 10000, 'project archived in db')
   const closed = db1.projects[0]
   check('A5: close sets archived = true', closed.archived === true)

@@ -38,7 +38,8 @@ import {
   addTehranDays,
   computeTeamPulse,
   computePulseChart,
-  buildRecentActivity
+  buildRecentActivity,
+  pickProgressProjectId
 } from '../src/lib/extract.js'
 
 const PLACEHOLDER_KEY = 'sb_publishable_PLACEHOLDER-NOT-A-REAL-KEY'
@@ -189,17 +190,41 @@ function unitTests() {
   // computePulseChart
   const c = computePulseChart(p.days)
   check('G3 unit: chart is 600x180', c.width === 600 && c.height === 180)
-  check('G3 unit: chart max is 3 (the largest daily value)', c.max === 3, String(c.max))
+  // H1-5: the y-axis max is at least 5, so one message is not a mountain.
+  check('G3 unit: chart max is 5 (floor) when the largest daily value is 3', c.max === 5, String(c.max))
   check('G3 unit: messages polyline has 7 points',
     c.messagesPoints.split(' ').length === 7, c.messagesPoints)
   check('G3 unit: done polyline has 7 points',
     c.donePoints.split(' ').length === 7, c.donePoints)
   check('G3 unit: x is reversed — oldest day on the right, today on the left',
     c.labels[0].x > c.labels[6].x, JSON.stringify(c.labels.map((l) => l.x)))
-  check('G3 unit: max value sits at the top (y=12), zero at the baseline (y=154)',
-    c.messagesPoints.split(' ')[6] === '8.0,12.0' &&
+  check('G3 unit: a value of 3 sits at y=68.8 with the max floor of 5 (not at the top), zero at the baseline (y=154)',
+    c.messagesPoints.split(' ')[6] === '8.0,68.8' &&
     c.messagesPoints.split(' ')[1] === '464.7,154.0',
     c.messagesPoints)
+  check('G3 unit: gridlines are 0 / 3 / 5 with readable y values (5 at the top, 0 at the baseline)',
+    JSON.stringify(c.gridlines.map((g) => g.value)) === '[0,3,5]' &&
+    c.gridlines[2].y === 12 && c.gridlines[0].y === 154,
+    JSON.stringify(c.gridlines))
+  // A single message in a week must not draw a mountain.
+  const c1 = computePulseChart(p.days.map((d, i) => ({ ...d, messages: i === 6 ? 1 : 0, done: 0 })))
+  check('G3 unit: one message peaks at y=125.6, far below the top (y=12)',
+    c1.max === 5 && c1.messagesPoints.split(' ')[6] === '8.0,125.6',
+    c1.messagesPoints)
+  // H1-4: pickProgressProjectId — current project wins, else the first
+  // project with tasks, else the first project, else null.
+  const pp = [{ id: 'p1' }, { id: 'p2' }, { id: 'p3' }]
+  const pt = [{ project_id: 'p2' }, { project_id: 'p3' }]
+  check('H1 unit: current project wins when it is in the list',
+    pickProgressProjectId(pp, pt, 'p3') === 'p3')
+  check('H1 unit: without a current project, the first project with tasks wins',
+    pickProgressProjectId(pp, pt, null) === 'p2')
+  check('H1 unit: with no tasks anywhere, the first project wins',
+    pickProgressProjectId(pp, [], null) === 'p1')
+  check('H1 unit: unknown current project falls back to the first project with tasks',
+    pickProgressProjectId(pp, pt, 'pX') === 'p2')
+  check('H1 unit: no projects gives null',
+    pickProgressProjectId([], pt, null) === null)
   check('G3 unit: labels are Jalali short days',
     c.labels.every((l) => typeof l.label === 'string' && l.label.length > 0) &&
     c.labels[6].label === '۱ آذر', JSON.stringify(c.labels.map((l) => l.label)))
@@ -665,6 +690,18 @@ async function main() {
   check('G3 bundle: no purple token in non-assistant view sources (HomeView uses .ai-card/.ai-btn, not the token)',
     !homeSrc.includes('#7C3AED') && !homeSrc.includes('#7c3aed') && !homeSrc.includes('btn-ai') &&
     !homeSrc.includes('var(--ai-accent)'))
+  // H1: two-tap close (no native confirm), compact hero, glass form
+  // card, soft assistant border, two-line titles.
+  check('H1 bundle: no native confirm() call left in HomeView',
+    !homeSrc.includes('confirm('), 'confirm( still in HomeView')
+  check('H1 bundle: hero is compact (h-44, not h-60)',
+    homeSrc.includes('relative h-44') && !homeSrc.includes('relative h-60'))
+  check('H1 bundle: project creation form card is glass (no bg-base-200)',
+    homeSrc.includes('<div class="card glass-card">') && !homeSrc.includes('bg-base-200'))
+  check('H1 bundle: assistant card border is soft jigari 0.25 (minified as #7f1d1d40)',
+    css.includes('.ai-card{border:1px solid #7f1d1d40}'))
+  check('H1 bundle: long titles clamp to two lines (line-clamp-2)',
+    homeSrc.includes('line-clamp-2'))
 
   // memberName() in the app: Zahra's seeded row is 'زهرا'; my row is
   // upserted from the fake session (no user_metadata), so its name is
@@ -711,6 +748,10 @@ async function main() {
       !!msgs && msgs.getAttribute('points').trim().split(/\s+/).length === 7, msgs?.getAttribute('points'))
     check('G3 mount: done series has 7 points',
       !!done && done.getAttribute('points').trim().split(/\s+/).length === 7, done?.getAttribute('points'))
+    check('H1 mount: chart gridlines render (3 lines) with a value label for the max',
+      chartSvg.querySelectorAll('line').length === 3 &&
+      [...chartSvg.querySelectorAll('text')].some((t) => norm(t.textContent) === '۵'),
+      'lines=' + chartSvg.querySelectorAll('line').length)
   }
   const chartRows = [...w1.document.querySelectorAll('[data-pulse-chart-table] tbody tr')]
   check('G3 mount: text-alternative table has 7 rows with the same daily numbers',
@@ -787,6 +828,11 @@ async function main() {
   const progBefore = norm(w1.document.querySelector('[data-progress-count]')?.textContent)
   check('G3 mount: progress starts at ۳ از ۹ (P1: 5 todo + 1 doing + 3 done)',
     progBefore.includes('۳') && progBefore.includes('۹'), progBefore)
+  // H1-4: the progress selector defaults to the current project (P1),
+  // not to a project chosen by list order.
+  const progSelect0 = w1.document.querySelector('[data-home-card="progress"] select')
+  check('H1 mount: progress defaults to the current project (P1)',
+    !!progSelect0 && progSelect0.value === PROJECT_ID, progSelect0 && progSelect0.value)
   const t1Row = myTaskRows.find((li) => li.querySelector('span.flex-1')?.textContent.trim() === 'کار ۱')
   const t1Box = t1Row.querySelector('input[type="checkbox"]')
   check('G3 mount: کار ۱ starts unchecked', !!t1Box && !t1Box.checked)
