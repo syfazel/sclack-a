@@ -1,14 +1,43 @@
 <script>
-  import { auth } from '../lib/store.svelte.js'
+  import { auth, displayPrefs } from '../lib/store.svelte.js'
   import { isConfigured } from '../lib/supabase.js'
   import { signIn, signUp, requestPasswordReset } from '../lib/auth.js'
   import LogoMark from './LogoMark.svelte'
+  import IntroTeaser from './IntroTeaser.svelte'
 
   let email = $state('')
   let password = $state('')
   let busy = $state(false)
   let showForgot = $state(false)
   let forgotBusy = $state(false)
+
+  // تیزر ورودی ۸ ثانیه‌ای (۰٫۱۵٫۰) — «چهار نقطه، یک خط».
+  // هر دفعه که لندینگ باز می‌شود پخش می‌شود، بدون دکمهٔ رد کردن؛
+  // با prefers-reduced-motion یا «حالت ساده» رد می‌شود و ورود
+  // مستقیم نشان داده می‌شود. ساعت این‌جاست تا کارت ورود و نشانگر
+  // فیلد ایمیل هم با پرده‌ها هماهنگ باشند.
+  let teaserActive = $state(false)
+  let teaserBeat = $state(0)
+  let teaserDone = $state(false)
+  let emailFocused = $state(false)
+
+  function teaserAllowed() {
+    if (displayPrefs.simple) return false
+    if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return false
+    return true
+  }
+
+  $effect(() => {
+    if (!teaserAllowed()) {
+      teaserActive = false
+      return
+    }
+    teaserActive = true
+    const timers = []
+    for (let b = 1; b <= 7; b++) timers.push(setTimeout(() => { teaserBeat = b }, b * 1000))
+    timers.push(setTimeout(() => { teaserDone = true }, 8000))
+    return () => timers.forEach(clearTimeout)
+  })
 
   function setMsg(text, kind) {
     auth.authMsg = text
@@ -79,7 +108,16 @@
       </div>
     {/await}
   </div>
-  <div class="card glass-card glass-card-landing relative z-10 w-full max-w-sm shrink-0 shadow-xl">
+  {#if teaserActive && !teaserDone}
+    <IntroTeaser beat={teaserBeat} />
+  {/if}
+  <div
+    class="card glass-card glass-card-landing teaser-card relative z-10 w-full max-w-sm shrink-0 shadow-xl {teaserActive &&
+    !teaserDone &&
+    teaserBeat < 6
+      ? 'teaser-card-hidden'
+      : ''}"
+  >
     <div class="card-body p-5">
       <div class="mb-1 flex items-center gap-2">
         <LogoMark class="h-6 w-12" />
@@ -100,14 +138,23 @@
 
       <label class="form-control w-full">
         <span class="label-text mb-1">ایمیل</span>
-        <input
-          type="email"
-          class="input input-landing input-bordered w-full"
-          placeholder="name@example.com"
-          bind:value={email}
-          disabled={!isConfigured || busy}
-          dir="ltr"
-        />
+        <div class="relative">
+          <input
+            type="email"
+            class="input input-landing input-bordered w-full"
+            placeholder="name@example.com"
+            bind:value={email}
+            disabled={!isConfigured || busy}
+            dir="ltr"
+            onfocus={() => (emailFocused = true)}
+            onblur={() => (emailFocused = false)}
+          />
+          {#if teaserDone && !emailFocused && !email}
+            <!-- پایان تیزر («مهر جیگری»): نقطهٔ جیگری این‌جا نشانگر تایپ
+                 است؛ با فوکوس یا تایپ، نشانگر واقعی جای آن را می‌گیرد. -->
+            <span class="teaser-caret" data-teaser-caret aria-hidden="true"></span>
+          {/if}
+        </div>
       </label>
       <label class="form-control w-full">
         <span class="label-text mb-1">رمز عبور</span>
@@ -182,3 +229,40 @@
     </div>
   </div>
 </div>
+
+<style>
+  /* تیزر ورودی (۰٫۱۵٫۰): کارت تا پردهٔ ۶ پنهان است و با آن می‌نشیند. */
+  .teaser-card {
+    transition:
+      opacity 1.2s ease,
+      transform 1.2s ease;
+  }
+  .teaser-card-hidden {
+    opacity: 0;
+    transform: translateY(14px);
+    pointer-events: none;
+  }
+  /* نشانگر چشمک‌زن فیلد ایمیل پس از پایان تیزر. */
+  .teaser-caret {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    width: 2px;
+    height: 20px;
+    margin-top: -10px;
+    background: #991b1b;
+    border-radius: 1px;
+    pointer-events: none;
+    animation: teaser-caret-blink 1.1s linear infinite;
+  }
+  @keyframes teaser-caret-blink {
+    0%,
+    49% {
+      opacity: 1;
+    }
+    50%,
+    100% {
+      opacity: 0;
+    }
+  }
+</style>
