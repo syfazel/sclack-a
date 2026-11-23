@@ -308,7 +308,7 @@ function seedG3(db) {
     { id: ROOM2_ID, project_id: PROJECT2_ID, name: 'گفت‌وگو', type: 'project', member_a: null, member_b: null, created_by: MEMBER_ID, created_at: iso(now), visibility: 'project', custom_fields: {} }
   )
   db.docs.push(
-    { id: DOC_ID, project_id: PROJECT_ID, title: 'سند تازه', yjs_doc_id: 'doc-g3-1', template_id: null, created_by: MEMBER_ID, created_at: daysAgo(2), updated_at: hoursAgo(1), version: 1, visibility: 'project', custom_fields: {} },
+    { id: DOC_ID, project_id: PROJECT_ID, title: 'سند تازه', yjs_doc_id: 'doc-g3-1', template_id: null, created_by: MEMBER_ID, created_at: daysAgo(2), updated_at: hoursAgo(1), version: 1, visibility: 'project', custom_fields: { starred: true } },
     { id: DOC2_ID, project_id: PROJECT_ID, title: 'سند قدیمی', yjs_doc_id: 'doc-g3-2', template_id: null, created_by: MEMBER_ID, created_at: daysAgo(12), updated_at: daysAgo(10), version: 1, visibility: 'project', custom_fields: {} },
     { id: DOC3_ID, project_id: PROJECT2_ID, title: 'سند خالی', yjs_doc_id: 'doc-g3-3', template_id: null, created_by: MEMBER_ID, created_at: hoursAgo(0.5), updated_at: hoursAgo(0.5), version: 1, visibility: 'project', custom_fields: {} }
   )
@@ -645,6 +645,11 @@ function clickButton(w, scope, label) {
   return btn
 }
 
+function setInput(w, el, value) {
+  el.value = value
+  el.dispatchEvent(new w.Event('input', { bubbles: true }))
+}
+
 // ---------- main ----------
 async function main() {
   unitTests()
@@ -658,6 +663,7 @@ async function main() {
   const srcDir = new URL('../src/', import.meta.url).pathname
   const homeSrc = readFileSync(srcDir + 'components/HomeView.svelte', 'utf8')
   const sidebarSrc = readFileSync(srcDir + 'components/Sidebar.svelte', 'utf8')
+  const dataSrc = readFileSync(srcDir + 'lib/data.js', 'utf8')
   const cssFile = readdirSync(new URL('../dist/assets/', import.meta.url).pathname)
     .find((f) => f.startsWith('index-') && f.endsWith('.css'))
   const css = cssFile ? readFileSync(new URL('../dist/assets/' + cssFile, import.meta.url).pathname, 'utf8') : ''
@@ -670,8 +676,8 @@ async function main() {
     homeSrc.includes('lg:col-start-6') && homeSrc.includes('lg:col-span-4') &&
     homeSrc.includes('lg:col-start-10') && homeSrc.includes('lg:col-span-3') &&
     homeSrc.includes('lg:col-span-7') && homeSrc.includes('lg:col-start-8'))
-  check('G3 bundle: all 9 home cards + pulse have data-home-card',
-    ['mentions', 'my-tasks', 'progress', 'recent-docs', 'activity', 'reminders', 'files', 'assistant', 'pulse']
+  check('H2 bundle: all 10 home cards + pulse have data-home-card',
+    ['mentions', 'my-tasks', 'progress', 'recent-docs', 'activity', 'favorites', 'reminders', 'files', 'assistant', 'pulse']
       .every((c) => homeSrc.includes('data-home-card="' + c + '"')))
   check('G3 bundle: no weather card and no Upgrade card is built',
     !homeSrc.includes('آب‌وهوا') && !homeSrc.toLowerCase().includes('upgrade') && !homeSrc.includes('ارتقا'))
@@ -700,6 +706,14 @@ async function main() {
     homeSrc.includes('<div class="card glass-card">') && !homeSrc.includes('bg-base-200'))
   check('H1 bundle: assistant card border is soft jigari 0.25 (minified as #7f1d1d40)',
     css.includes('.ai-card{border:1px solid #7f1d1d40}'))
+  check('H2 bundle: quick-task input on the my-tasks card',
+    homeSrc.includes('placeholder="کار تازه برای من"'))
+  check('H2 bundle: new-doc input on the recent-docs card',
+    homeSrc.includes('placeholder="نام سند تازه در این پروژه"'))
+  check('H2 bundle: favorites card exists (data-home-card="favorites")',
+    homeSrc.includes('data-home-card="favorites"'))
+  check('H2 bundle: pulse docs select reads custom_fields (starred)',
+    dataSrc.includes('custom_fields'))
   check('H1 bundle: long titles clamp to two lines (line-clamp-2)',
     homeSrc.includes('line-clamp-2'))
 
@@ -779,10 +793,10 @@ async function main() {
       !w1.document.querySelector('[data-pulse-change-done]'))
   }
 
-  // Bento: DOM order is the mobile reading order; 10 home sections.
+  // Bento: DOM order is the mobile reading order; 11 home sections.
   const cardOrder = [...w1.document.querySelectorAll('[data-home-card]')].map((el) => el.dataset.homeCard)
-  check('G3 mount: 10 home sections in mobile reading order',
-    JSON.stringify(cardOrder) === JSON.stringify(['greeting', 'mentions', 'my-tasks', 'progress', 'recent-docs', 'activity', 'reminders', 'files', 'assistant', 'pulse']),
+  check('H2 mount: 11 home sections in mobile reading order (favorites after activity)',
+    JSON.stringify(cardOrder) === JSON.stringify(['greeting', 'mentions', 'my-tasks', 'progress', 'recent-docs', 'activity', 'favorites', 'reminders', 'files', 'assistant', 'pulse']),
     JSON.stringify(cardOrder))
   const cardCls = (id) => {
     const el = w1.document.querySelector('[data-home-card="' + id + '"]')
@@ -804,6 +818,8 @@ async function main() {
     cardCls('files').includes('lg:col-start-5') && cardCls('files').includes('lg:col-span-4'))
   check('G3 mount: assistant card is 9/4 on desktop',
     cardCls('assistant').includes('lg:col-start-9') && cardCls('assistant').includes('lg:col-span-4'))
+  check('H2 mount: favorites card is 1/4 on desktop',
+    cardCls('favorites').includes('lg:col-start-1') && cardCls('favorites').includes('lg:col-span-4'))
   check('G3 mount: pulse card spans all 12 columns on desktop',
     cardCls('pulse').includes('lg:col-span-12'))
 
@@ -851,6 +867,29 @@ async function main() {
     !myTitlesAfter.includes('کار ۱') && JSON.stringify(myTitlesAfter) === JSON.stringify(['کار ۱۰', 'کار ۲', 'کار ۳', 'کار ۵']),
     JSON.stringify(myTitlesAfter))
 
+  // H2-1: quick task — creates a task for me in the current project
+  // and the progress ring moves from ۴ از ۹ to ۴ از ۱۰ (کار ۱ was
+  // toggled done just above).
+  const quickInput = w1.document.querySelector('input[placeholder="کار تازه برای من"]')
+  check('H2 mount: quick-task input renders on the my-tasks card', !!quickInput)
+  setInput(w1, quickInput, 'کار سریع پروب')
+  // The button enables only once the title binding has flushed.
+  await waitFor(w1, () => {
+    const b = [...w1.document.querySelectorAll('[data-home-card="my-tasks"] button')].find((x) => x.textContent.trim() === 'ساختن')
+    return b && !b.disabled
+  }, 10000, 'quick-task button enabled')
+  clickButton(w1, w1.document.querySelector('[data-home-card="my-tasks"]'), 'ساختن')
+  await waitFor(w1, () => db1.tasks.length === 11, 10000, 'quick task row created')
+  const qt = db1.tasks.find((t) => t.title === 'کار سریع پروب')
+  check('H2 mount: quick task is mine, in the current project, todo',
+    !!qt && qt.assignee_id === MEMBER_ID && qt.project_id === PROJECT_ID && qt.status === 'todo',
+    JSON.stringify(qt))
+  await waitFor(w1, () => {
+    const t = norm(w1.document.querySelector('[data-progress-count]')?.textContent || '')
+    return t.includes('۴') && t.includes('۱۰')
+  }, 10000, 'progress becomes ۴ از ۱۰ after the quick task')
+  check('H2 mount: quick task moves the progress ring to ۴ از ۱۰', true)
+
   // Progress switcher: P2 has 1 todo task -> ۰ از ۱.
   const progSelect = w1.document.querySelector('[data-home-card="progress"] select')
   progSelect.value = PROJECT2_ID
@@ -868,6 +907,10 @@ async function main() {
     norm(docRows[0].textContent).includes('سند خالی') &&
     norm(docRows[1].textContent).includes('سند تازه') &&
     norm(docRows[2].textContent).includes('سند قدیمی'),
+    JSON.stringify(docRows.map((li) => norm(li.textContent))))
+  check('H2 mount: recent-docs rows show the project name',
+    norm(docRows[0].textContent).includes('پروژهٔ خالی') &&
+    norm(docRows[1].textContent).includes('پروژهٔ پروب G3'),
     JSON.stringify(docRows.map((li) => norm(li.textContent))))
 
   // Recent activity: same rows as buildRecentActivity over the seed.
@@ -898,6 +941,12 @@ async function main() {
     norm(fileRows[0].textContent).includes('فایل ۱') &&
     !w1.document.querySelector('[data-recent-files-list]').textContent.includes('فایل ۶'),
     JSON.stringify(fileRows.map((li) => norm(li.textContent))))
+
+  // H2-3: favorites card shows the starred doc (سند تازه).
+  const favRows = [...w1.document.querySelectorAll('[data-favorites-list] li')]
+  check('H2 mount: favorites card shows the starred doc (سند تازه)',
+    favRows.length === 1 && norm(favRows[0].textContent).includes('سند تازه'),
+    JSON.stringify(favRows.map((li) => norm(li.textContent))))
 
   // G3-7: presence only in the hero strip; no new Realtime channel.
   check('G3 mount: presence dots live only in the sidebar seats (not in cards)',
@@ -934,6 +983,41 @@ async function main() {
   allErrors.push(...m1.errors)
   m1.dom.window.close()
 
+  // ---- mount 1b: H2-2 new doc from the recent-docs card ----
+  const db1b = makeDb()
+  seedG3(db1b)
+  const stub1b = makeStub(db1b)
+  const m1b = await mountApp({ html, js }, stub1b, '#/')
+  const w1b = m1b.w
+  allErrors.push(...m1b.errors)
+  // The sidebar has its own doc-creation input with a similar
+  // placeholder, so the card's input is queried scoped to the card.
+  const newDocSel = '[data-home-card="recent-docs"] input[placeholder="نام سند تازه در این پروژه"]'
+  await waitFor(w1b, () => w1b.document.querySelector(newDocSel), 10000, 'new-doc input')
+  // Let the app settle (pulse loaded) before typing: typing into the
+  // input before Svelte's bind:value listener attaches loses the event
+  // and the button never enables.
+  await waitFor(w1b, () => w1b.document.querySelector('[data-pulse-number="messages"]'), 10000, 'pulse numbers (app settled)')
+  const newDocInput = w1b.document.querySelector(newDocSel)
+  check('H2 mount: new-doc input renders on the recent-docs card', !!newDocInput)
+  setInput(w1b, newDocInput, 'سند پروب خانه')
+  // The button enables only once the workspace load has set
+  // currentProjectId AND the title binding has flushed — wait for
+  // that directly instead of guessing a sleep.
+  await waitFor(w1b, () => {
+    const b = [...w1b.document.querySelectorAll('[data-home-card="recent-docs"] button')].find((x) => x.textContent.trim() === 'ساختن')
+    return b && !b.disabled
+  }, 10000, 'new-doc button enabled')
+  clickButton(w1b, w1b.document.querySelector('[data-home-card="recent-docs"]'), 'ساختن')
+  await waitFor(w1b, () => w1b.location.hash.startsWith('#/doc/'), 10000, 'navigate to the new doc')
+  const nd = db1b.docs.find((d) => d.title === 'سند پروب خانه')
+  check('H2 mount: new doc row created in the current project',
+    !!nd && nd.project_id === PROJECT_ID, JSON.stringify(nd))
+  check('H2 mount: new doc navigation lands on the new doc id',
+    w1b.location.hash === '#/doc/' + (nd && nd.id), w1b.location.hash)
+  allErrors.push(...m1b.errors)
+  m1b.dom.window.close()
+
   // ---- mount 2: empty workspace ----
   const db2 = makeDb()
   const stub2 = makeStub(db2)
@@ -953,7 +1037,7 @@ async function main() {
     !w2.document.querySelector('[data-pulse-change-done]'))
   check('G3 empty: every card shows its empty state',
     ['منشنی نیست', 'کاری به تو سپرده نشده', 'هنوز پروژه‌ای نیست', 'هنوز سندی نیست',
-     'هنوز فعالیتی نیست', 'یادآوری‌ای نیست', 'هنوز فایلی نیست']
+     'سندی ستاره‌دار نیست', 'هنوز فعالیتی نیست', 'یادآوری‌ای نیست', 'هنوز فایلی نیست']
       .every((t) => w2.document.body.textContent.includes(t)))
   allErrors.push(...m2.errors)
   m2.dom.window.close()

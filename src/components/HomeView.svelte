@@ -12,6 +12,9 @@
   } from '../lib/data.js'
   import { loadNotifications } from '../lib/notifications.js'
   import { setTaskDone } from '../lib/work.js'
+  import { createTask } from '../lib/work.js'
+  import { createDoc } from '../lib/docs.js'
+  import { isStarred } from '../lib/starred.js'
   import {
     PROJECT_STAGE_LABEL,
     endOfTehranDay,
@@ -246,6 +249,14 @@
       .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at))
       .slice(0, 5)
   )
+  // H2-3: starred docs, same source as the sidebar favorites
+  // (pulse.docs + isStarred), newest first, max 5.
+  const starredDocs = $derived(
+    [...(pulse.docs || [])]
+      .filter(isStarred)
+      .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at))
+      .slice(0, 5)
+  )
   const activity = $derived(
     pulse.loaded
       ? buildRecentActivity(
@@ -311,6 +322,58 @@
 
   function askAssistant() {
     location.hash = '#/assistant'
+  }
+
+  // H2-1: quick task for me in the current project — same API as
+  // TasksView, then the pulse slice reloads so the cards refresh.
+  let quickTaskTitle = $state('')
+  let quickTaskBusy = $state(false)
+  let quickTaskError = $state('')
+
+  async function doQuickTask() {
+    const title = quickTaskTitle.trim()
+    if (!title || quickTaskBusy || !ws.currentProjectId) return
+    quickTaskBusy = true
+    quickTaskError = ''
+    try {
+      await createTask({
+        projectId: ws.currentProjectId,
+        title,
+        description: null,
+        assigneeId: auth.member?.id || null,
+        dueAt: null,
+        linkType: null,
+        linkId: null
+      })
+      quickTaskTitle = ''
+      await loadTeamPulseData()
+    } catch (e) {
+      quickTaskError = e.message || String(e)
+    } finally {
+      quickTaskBusy = false
+    }
+  }
+
+  // H2-2: new doc in the current project — same path as the sidebar
+  // (createDoc + go to the doc).
+  let newHomeDocTitle = $state('')
+  let homeDocBusy = $state(false)
+  let homeDocError = $state('')
+
+  async function doCreateHomeDoc() {
+    const title = newHomeDocTitle.trim()
+    if (!title || homeDocBusy || !ws.currentProjectId) return
+    homeDocBusy = true
+    homeDocError = ''
+    try {
+      const doc = await createDoc(ws.currentProjectId, title)
+      newHomeDocTitle = ''
+      location.hash = '#/doc/' + doc.id
+    } catch (e) {
+      homeDocError = e.message || String(e)
+    } finally {
+      homeDocBusy = false
+    }
   }
 
   // Quick chips on the assistant home card: hand the command number
@@ -419,8 +482,8 @@
 <div class="h-full overflow-y-auto px-4 py-6 md:px-8">
   <!-- G3-1: bento grid — 12 columns on desktop, 2 on tablet, 1 on
        mobile. DOM order is the mobile reading order (greeting,
-       mentions, my tasks, progress, recent docs, activity, reminders,
-       files, assistant, pulse); desktop placement is explicit
+       mentions, my tasks, progress, recent docs, activity, favorites,
+       reminders, files, assistant, pulse); desktop placement is explicit
        lg:col-start/lg:col-span per card. -->
   <div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-12" data-home-bento>
   <!-- G2 — هیروی خانه: «سلام + کارهای امروز»؛ صحنهٔ آرام (سبک، کند)
@@ -509,6 +572,28 @@
       </ul>
       <a href="#/tasks" class="btn btn-sm btn-sclack-secondary mt-3">همهٔ کارها</a>
     {/if}
+    <!-- H2-1: quick task for me in the current project -->
+    <div class="mt-3 flex gap-2">
+      <input
+        class="input input-sm input-bordered input-sclack min-w-0 flex-1 bg-base-100"
+        placeholder="کار تازه برای من"
+        bind:value={quickTaskTitle}
+        onkeydown={(e) => {
+          if (e.key === 'Enter') doQuickTask()
+        }}
+        disabled={quickTaskBusy || !ws.currentProjectId}
+      />
+      <button
+        class="btn btn-sclack btn-sm btn-primary"
+        onclick={doQuickTask}
+        disabled={quickTaskBusy || !ws.currentProjectId || !quickTaskTitle.trim()}
+      >
+        ساختن
+      </button>
+    </div>
+    {#if quickTaskError}
+      <p class="mt-1 text-xs text-error">{quickTaskError}</p>
+    {/if}
   </section>
 
   <!-- Card 4: project progress — SVG ring from computeProjectReview -->
@@ -573,11 +658,34 @@
         {#each recentDocs as d (d.id)}
           <li class="flex items-center gap-2 text-sm">
             <a href={'#/doc/' + d.id} class="min-w-0 flex-1 truncate text-primary">{d.title}</a>
+            <span class="shrink-0 text-xs opacity-60">{projectName(d.project_id)}</span>
             <span class="shrink-0 text-xs opacity-60">{memberName(d.created_by)}</span>
             <span class="shrink-0 text-xs opacity-60">{jalaliDayLabel(d.updated_at)}</span>
           </li>
         {/each}
       </ul>
+    {/if}
+    <!-- H2-2: new doc in the current project (same path as the sidebar) -->
+    <div class="mt-3 flex gap-2">
+      <input
+        class="input input-sm input-bordered input-sclack min-w-0 flex-1 bg-base-100"
+        placeholder="نام سند تازه در این پروژه"
+        bind:value={newHomeDocTitle}
+        onkeydown={(e) => {
+          if (e.key === 'Enter') doCreateHomeDoc()
+        }}
+        disabled={homeDocBusy || !ws.currentProjectId}
+      />
+      <button
+        class="btn btn-sclack btn-sm btn-primary"
+        onclick={doCreateHomeDoc}
+        disabled={homeDocBusy || !ws.currentProjectId || !newHomeDocTitle.trim()}
+      >
+        ساختن
+      </button>
+    </div>
+    {#if homeDocError}
+      <p class="mt-1 text-xs text-error">{homeDocError}</p>
     {/if}
   </section>
 
@@ -594,6 +702,28 @@
           <li class="flex items-center gap-2 text-sm">
             <a href={a.link} class="min-w-0 flex-1 truncate">{a.actor} {a.text}</a>
             <span class="shrink-0 text-xs opacity-60">{jalaliDayLabel(a.at)}</span>
+          </li>
+        {/each}
+      </ul>
+    {/if}
+  </section>
+
+  <!-- H2-3: favorites — starred docs, same source as the sidebar
+       favorites (pulse.docs + isStarred), max 5. -->
+  <section class="glass-card col-span-1 p-4 md:col-span-1 lg:col-span-4 lg:col-start-1" data-home-card="favorites">
+    <h2 class="text-base font-bold">علاقه‌مندی‌ها</h2>
+    {#if pulse.loading && !pulse.loaded}
+      <p class="mt-2 text-sm opacity-70">در حال بارگذاری…</p>
+    {:else if starredDocs.length === 0}
+      <p class="mt-2 text-sm opacity-70">سندی ستاره‌دار نیست</p>
+      <p class="mt-1 text-xs opacity-60">از سایدبار روی سند ستاره بزن</p>
+    {:else}
+      <ul class="mt-2 space-y-2" data-favorites-list>
+        {#each starredDocs as d (d.id)}
+          <li class="flex items-center gap-2 text-sm">
+            <a href={'#/doc/' + d.id} class="min-w-0 flex-1 truncate text-primary">{d.title}</a>
+            <span class="shrink-0 text-xs opacity-60">{projectName(d.project_id)}</span>
+            <span class="shrink-0 text-xs opacity-60">{jalaliDayLabel(d.updated_at)}</span>
           </li>
         {/each}
       </ul>

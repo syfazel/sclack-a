@@ -479,7 +479,9 @@ export async function loadTeamPulseData() {
         .limit(500),
       sb
         .from('docs')
-        .select('id, project_id, title, created_by, created_at, updated_at')
+        // custom_fields is selected too: H2-3 reads starred from the
+        // pulse rows (isStarred), like the sidebar favorites.
+        .select('id, project_id, title, created_by, created_at, updated_at, custom_fields')
         .order('updated_at', { ascending: false })
         .limit(200),
       sb
