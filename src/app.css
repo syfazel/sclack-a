@@ -943,3 +943,28 @@ html.simple-mode .doc-fade {
     transition: none;
   }
 }
+
+/* فاز ۶ — نمای چاپ کاربرگ: فقط خود فرم چاپ شود، نه سایدبار، تب‌ها،
+   دکمه‌ها و نظرها. رنگ‌ها تخت می‌شوند تا چاپ تمیز بماند. */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .form-print,
+  .form-print * {
+    visibility: visible;
+  }
+  .form-print {
+    position: absolute;
+    inset: 0;
+    max-width: none;
+    padding: 0;
+  }
+  .form-print .no-print {
+    display: none;
+  }
+  .form-print section {
+    break-inside: avoid;
+    border-color: #999;
+  }
+}

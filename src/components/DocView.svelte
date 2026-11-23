@@ -21,6 +21,8 @@
   import { tick } from 'svelte'
   import FileList from './FileList.svelte'
   import VersionsPanel from './VersionsPanel.svelte'
+  import FormView from './FormView.svelte'
+  import RulesView from './RulesView.svelte'
 
   let { docId } = $props()
 
@@ -50,6 +52,13 @@
   // view re-renders on every Yjs update (local or remote).
   let mode = $state('read') // 'read' | 'edit'
   let renderedHtml = $state('')
+
+  // سندهای ساخت‌یافته (فاز ۶ فرم ۴۶ سوالی، فاز ۱۰ مخزن ۵۵ قانون):
+  // متن Yjs ندارند و نمای ویژه می‌گیرند؛ ویرایشگر متن، کلید خواندن/
+  // ویرایش و نسخه‌ها برای آن‌ها پنهان است.
+  const isFormDoc = $derived(docRow?.custom_fields?.form_kind === 'rooyesh-46')
+  const isRulesDoc = $derived(docRow?.custom_fields?.rules_kind === 'aim-55')
+  const isStructuredDoc = $derived(isFormDoc || isRulesDoc)
 
   // Wikilinks resolve by title inside THIS project (ws.docs holds the
   // current project's docs); a duplicate title resolves to the most
@@ -188,11 +197,15 @@
       loading = false
       return
     }
-    const { doc, text } = createYDoc()
-    ydoc = doc
-    ytext = text
-    await loadRowStateInto(docRow, ydoc)
-    lastSavedB64 = null
+    // سند ساخت‌یافته متن Yjs ندارد: سند Yjs، پخش زنده و کانال ردیف
+    // ساخته نمی‌شوند تا custom_fields فرم/قوانین آلوده نشود.
+    if (!isStructuredDoc) {
+      const { doc, text } = createYDoc()
+      ydoc = doc
+      ytext = text
+      await loadRowStateInto(docRow, ydoc)
+      lastSavedB64 = null
+    }
     // D-UX6: بازکردن سند، تب آن را می‌سازد/فعال می‌کند (با عنوان واقعی).
     openDocTab(docRow.id, docRow.title)
     // If this doc belongs to another project than the one selected (deep
@@ -202,23 +215,25 @@
       ws.currentProjectId = docRow.project_id
       await loadProjectData(docRow.project_id)
     }
-    bc = connectBroadcast(ydoc, docRow.yjs_doc_id, {
-      name: auth.member?.name || 'عضو'
-    })
-    bc.awareness.on('change', refreshPresence)
-    refreshPresence()
-    ydoc.on('update', onDocUpdate)
-    // Phase 4: re-render the read view on every Yjs update (local or
-    // remote — ytext.observe fires for both).
-    ytext.observe(onYTextChange)
-    rerender()
+    if (!isStructuredDoc) {
+      bc = connectBroadcast(ydoc, docRow.yjs_doc_id, {
+        name: auth.member?.name || 'عضو'
+      })
+      bc.awareness.on('change', refreshPresence)
+      refreshPresence()
+      ydoc.on('update', onDocUpdate)
+      // Phase 4: re-render the read view on every Yjs update (local or
+      // remote — ytext.observe fires for both).
+      ytext.observe(onYTextChange)
+      rerender()
+    }
     // NOTE: the textarea is NOT bound here. It only renders after
     // `loading` turns false below, so `textarea` is still null at this
     // point — binding here silently never happened (D6 bug 1: typed text
     // never reached the Yjs doc). The bind effect below binds it once
     // it is actually mounted.
     // Remote row saves (another browser) arrive here and merge in.
-    if (sb) {
+    if (sb && !isStructuredDoc) {
       rowChannel = sb
         .channel('doc-row-' + docRow.id, { config: { private: true } })
         .on(
@@ -425,6 +440,7 @@
             {isStarred(docRow) ? '★' : '☆'}
           </button>
         </div>
+        {#if !isStructuredDoc}
         <!-- Phase 4 (faz4 spec §1): joined read/edit toggle, read active
              by default; min 44px touch target, aria-pressed. -->
         <div class="doc-mode-toggle join mt-2" data-mode-toggle role="group" aria-label="حالت نمایش سند">
@@ -469,6 +485,7 @@
           همگام‌سازی زنده بین تب‌های همین مرورگر است؛ بین مرورگرهای مختلف با
           ذخیرهٔ ردیف (هر ۲ ثانیه) همگام می‌شود.
         </p>
+        {/if}
         <!-- Phase 5: move this doc under another doc, or back to the root. -->
         <div class="doc-move mt-3 flex flex-wrap items-center gap-2" data-doc-move>
           <label class="text-xs opacity-70" for="doc-move-parent">انتقال به زیرِ سندِ…</label>
@@ -516,7 +533,11 @@
           {/if}
         </div>
       </header>
-      {#if mode === 'read'}
+      {#if isFormDoc}
+        <FormView {docRow} />
+      {:else if isRulesDoc}
+        <RulesView {docRow} />
+      {:else if mode === 'read'}
         <div class="doc-fade doc-page min-h-0 flex-1 px-4 py-3">
           {#if renderedHtml}
             <div class="doc-read" data-doc-read>{@html renderedHtml}</div>

@@ -3,6 +3,8 @@ import { auth, ws } from './store.svelte.js'
 import * as Y from 'yjs'
 import { encodeDocState, applyDocState } from './yjs-sync.js'
 import { SEARCH_TEXT_MAX_CHARS, validateDocParent } from './extract.js'
+import { FORM_ROOYESH_46, FORM_KIND, emptyFormAnswers } from './form-rooyesh.js'
+import { RULES_55, RULES_KIND } from './rules-aim.js'
 
 // نگهبان ستون search_text (فاز ۳): مهاجرت زنده هنوز اجرا نشده و کدِ
 // دیپلوی‌شده پیش از آن زنده می‌شود؛ تا وقتی ستون نیست، نوشتن/خواندنش
@@ -127,6 +129,87 @@ export async function createAutoDoc(projectId) {
 export async function loadDocRow(docId) {
   const { data, error } = await sb.from('docs').select('*').eq('id', docId).single()
   if (error) throw error
+  return data
+}
+
+// ---------- سندهای ساخت‌یافته (فاز ۶ فرم ۴۶ سوالی، فاز ۱۰ مخزن ۵۵ قانون) ----------
+// تعریف کامل و پاسخ‌ها در custom_fields خود سند نگه داشته می‌شوند —
+// بدون جدول تازه. سند فرم/قوانین متن Yjs ندارد و در DocView نمای
+// ویژه (FormView / RulesView) می‌گیرد، نه ویرایشگر متن.
+
+// ادغام patch در custom_fields سند (خواندن تازه، بعد نوشتن) و برگرداندن
+// مقدار ادغام‌شده. برای ذخیرهٔ پاسخ‌های فرم به کار می‌رود.
+export async function setDocCustomFields(docRow, patch) {
+  if (!docRow?.id) throw new Error('سند مشخص نیست.')
+  const { data, error } = await sb
+    .from('docs')
+    .select('custom_fields')
+    .eq('id', docRow.id)
+    .single()
+  if (error) throw error
+  const merged = { ...(data?.custom_fields || {}), ...patch }
+  const { error: uerr } = await sb
+    .from('docs')
+    .update({ custom_fields: merged, updated_at: new Date().toISOString() })
+    .eq('id', docRow.id)
+  if (uerr) throw uerr
+  return merged
+}
+
+export function findFormDoc(docs) {
+  return (docs || []).find((d) => d.custom_fields?.form_kind === FORM_KIND) || null
+}
+
+export function findRulesDoc(docs) {
+  return (docs || []).find((d) => d.custom_fields?.rules_kind === RULES_KIND) || null
+}
+
+export async function createFormDoc(projectId) {
+  if (!auth.member) throw new Error('ردیف عضو هنوز ساخته نشده است.')
+  const existing = findFormDoc(ws.docs)
+  if (existing) return existing
+  const { data, error } = await sb
+    .from('docs')
+    .insert({
+      project_id: projectId,
+      title: 'د — کاربرگ رسمی رویش (۴۶ سؤال)',
+      yjs_doc_id: newYjsDocId(projectId),
+      created_by: auth.member.id,
+      visibility: 'project',
+      custom_fields: {
+        form_kind: FORM_KIND,
+        form_def: FORM_ROOYESH_46,
+        form_answers: emptyFormAnswers()
+      }
+    })
+    .select()
+    .single()
+  if (error) throw error
+  await loadDocs(projectId)
+  return data
+}
+
+export async function createRulesDoc(projectId) {
+  if (!auth.member) throw new Error('ردیف عضو هنوز ساخته نشده است.')
+  const existing = findRulesDoc(ws.docs)
+  if (existing) return existing
+  const { data, error } = await sb
+    .from('docs')
+    .insert({
+      project_id: projectId,
+      title: 'ز — مخزن قوانین اجرای AIM (۵۵ قانون)',
+      yjs_doc_id: newYjsDocId(projectId),
+      created_by: auth.member.id,
+      visibility: 'project',
+      custom_fields: {
+        rules_kind: RULES_KIND,
+        rules: RULES_55
+      }
+    })
+    .select()
+    .single()
+  if (error) throw error
+  await loadDocs(projectId)
   return data
 }
 

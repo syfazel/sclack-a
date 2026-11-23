@@ -2,7 +2,7 @@
   import { onMount } from 'svelte'
   import { auth, ws, chat, notif, displayPrefs } from '../lib/store.svelte.js'
   import { loadProjectData } from '../lib/data.js'
-  import { createDoc, createPrivateDoc, loadPrivateDocs } from '../lib/docs.js'
+  import { createDoc, createPrivateDoc, loadPrivateDocs, createFormDoc, createRulesDoc } from '../lib/docs.js'
   import { buildDocTree } from '../lib/extract.js'
   import { signOut, validateChangePassword, changePassword } from '../lib/auth.js'
   import { toggleSimpleMode } from '../lib/display-prefs.js'
@@ -121,6 +121,36 @@
     try {
       const doc = await createDoc(ws.currentProjectId, newDocTitle)
       newDocTitle = ''
+      location.hash = '#/doc/' + doc.id
+    } catch (e) {
+      docError = e.message || String(e)
+    } finally {
+      creatingDoc = false
+    }
+  }
+
+  // سندهای ساخت‌یافته (فاز ۶ فرم، فاز ۱۰ قوانین): یک‌تپی، و اگر از
+  // قبل ساخته شده‌اند همان سند باز می‌شود (create*Doc خودش برمی‌گرداند).
+  async function doCreateFormDoc() {
+    if (creatingDoc || !ws.currentProjectId) return
+    creatingDoc = true
+    docError = ''
+    try {
+      const doc = await createFormDoc(ws.currentProjectId)
+      location.hash = '#/doc/' + doc.id
+    } catch (e) {
+      docError = e.message || String(e)
+    } finally {
+      creatingDoc = false
+    }
+  }
+
+  async function doCreateRulesDoc() {
+    if (creatingDoc || !ws.currentProjectId) return
+    creatingDoc = true
+    docError = ''
+    try {
+      const doc = await createRulesDoc(ws.currentProjectId)
       location.hash = '#/doc/' + doc.id
     } catch (e) {
       docError = e.message || String(e)
@@ -468,6 +498,24 @@
         {#if docError}
           <p class="mt-1 text-xs text-error">{docError}</p>
         {/if}
+        <div class="mt-2 flex flex-col gap-1">
+          <button
+            class="btn btn-outline btn-sm min-h-11 justify-start"
+            data-create-form-doc
+            onclick={doCreateFormDoc}
+            disabled={creatingDoc}
+          >
+            ساختن کاربرگ رسمی رویش (۴۶ سؤال)
+          </button>
+          <button
+            class="btn btn-outline btn-sm min-h-11 justify-start"
+            data-create-rules-doc
+            onclick={doCreateRulesDoc}
+            disabled={creatingDoc}
+          >
+            ساختن سند قوانین (۵۵ قانون)
+          </button>
+        </div>
       {/if}
     {/if}
   </section>
