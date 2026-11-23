@@ -2,7 +2,7 @@ import { sb } from './supabase.js'
 import { auth, ws } from './store.svelte.js'
 import * as Y from 'yjs'
 import { encodeDocState, applyDocState } from './yjs-sync.js'
-import { SEARCH_TEXT_MAX_CHARS } from './extract.js'
+import { SEARCH_TEXT_MAX_CHARS, validateDocParent } from './extract.js'
 
 // نگهبان ستون search_text (فاز ۳): مهاجرت زنده هنوز اجرا نشده و کدِ
 // دیپلوی‌شده پیش از آن زنده می‌شود؛ تا وقتی ستون نیست، نوشتن/خواندنش
@@ -86,6 +86,43 @@ export async function loadDocRow(docId) {
   const { data, error } = await sb.from('docs').select('*').eq('id', docId).single()
   if (error) throw error
   return data
+}
+
+// ---------- Phase 5: nested docs (decision D4) ----------
+// Move a doc under a new parent (null = back to the root). The cycle
+// guard runs first, against ws.docs: the parent can never be the doc
+// itself or one of its descendants. When the live table has no
+// parent_id column yet (the migration runs by hand in the SQL Editor),
+// the write answers 42703 — that turns into a clear Persian message
+// instead of breaking anything else. No doc delete exists in the app
+// (checked: no deleteDoc anywhere), so the "delete a parent re-roots
+// its children" rule has nothing to hook into here; the migration
+// itself carries it as `on delete set null` for any future delete.
+export async function setDocParent(docRow, newParentId) {
+  if (!docRow?.id) throw new Error('سند مشخص نیست.')
+  const parent = newParentId || null
+  const bad = validateDocParent(ws.docs, docRow.id, parent)
+  if (bad) throw new Error(bad)
+  if (parent) {
+    const parentRow = (ws.docs || []).find((d) => d.id === parent)
+    if (parentRow && parentRow.project_id !== docRow.project_id) {
+      throw new Error('سند والد باید از همان پروژه باشد.')
+    }
+  }
+  const { error } = await sb
+    .from('docs')
+    .update({ parent_id: parent })
+    .eq('id', docRow.id)
+  if (error) {
+    if (isMissingColumnError(error)) {
+      throw new Error(
+        'ستون تودرتویی هنوز روی دادهٔ زنده ساخته نشده است؛ اول مهاجرت را در SQL Editor اجرا کنید.'
+      )
+    }
+    throw error
+  }
+  await loadDocs(docRow.project_id)
+  return { ...docRow, parent_id: parent }
 }
 
 // ---------- row-based sync ----------

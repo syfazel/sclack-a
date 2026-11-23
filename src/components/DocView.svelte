@@ -6,12 +6,14 @@
     loadDocRow,
     loadRowStateInto,
     saveDocRow,
+    setDocParent,
     loadComments,
     addComment,
     setCommentResolved,
     makeAnchor,
     resolveAnchor
   } from '../lib/docs.js'
+  import { docAncestors, moveParentOptions } from '../lib/extract.js'
   import { createYDoc, connectBroadcast, bindTextarea, applyDocState } from '../lib/yjs-sync.js'
   import { renderMdLite, insertMdSnippet } from '../lib/md-lite.js'
   import { tick } from 'svelte'
@@ -137,9 +139,46 @@
     if (!origin) scheduleSave() // only local edits schedule a row save
   }
 
+  // Phase 5 (D4): breadcrumb path (root → parent) and the move picker.
+  // The picker lists every doc of this project except this doc and its
+  // descendants — those would close a cycle (moveParentOptions).
+  const ancestors = $derived(docRow ? docAncestors(ws.docs, docRow.id) : [])
+  const parentOptions = $derived(docRow ? moveParentOptions(ws.docs, docRow.id) : [])
+  let moveParentId = $state('')
+  let moveMsg = $state('')
+  let moveMsgKind = $state('') // '' | 'ok' | 'error'
+  let moving = $state(false)
+
+  async function doMoveDoc(newParentId) {
+    if (!docRow || moving) return
+    moving = true
+    moveMsg = ''
+    moveMsgKind = ''
+    try {
+      const updated = await setDocParent(docRow, newParentId)
+      docRow = updated
+      if (newParentId) {
+        const p = (ws.docs || []).find((d) => d.id === newParentId)
+        moveMsg = 'سند به زیرِ «' + (p ? p.title : 'سند') + '» منتقل شد.'
+      } else {
+        moveMsg = 'سند به ریشه برگردانده شد.'
+      }
+      moveMsgKind = 'ok'
+      moveParentId = ''
+    } catch (e) {
+      moveMsg = e.message || String(e)
+      moveMsgKind = 'error'
+    } finally {
+      moving = false
+    }
+  }
+
   async function init() {
     loading = true
     loadError = ''
+    moveParentId = ''
+    moveMsg = ''
+    moveMsgKind = ''
     try {
       docRow = await loadDocRow(docId)
     } catch (e) {
@@ -344,6 +383,16 @@
       </div>
     {:else if docRow}
       <header class="border-b border-base-300 px-4 py-3">
+        <!-- Phase 5: breadcrumb — the parent chain up to this doc. -->
+        {#if ancestors.length > 0}
+          <nav class="doc-breadcrumb mb-1 text-xs" data-doc-breadcrumb aria-label="مسیر سند">
+            {#each ancestors as a}
+              <a href="#/doc/{a.id}" class="doc-breadcrumb-link">{a.title}</a>
+              <span aria-hidden="true"> / </span>
+            {/each}
+            <span aria-current="page">{docRow.title}</span>
+          </nav>
+        {/if}
         <h1 class="text-lg font-bold">{docRow.title}</h1>
         <!-- Phase 4 (faz4 spec §1): joined read/edit toggle, read active
              by default; min 44px touch target, aria-pressed. -->
@@ -389,6 +438,52 @@
           همگام‌سازی زنده بین تب‌های همین مرورگر است؛ بین مرورگرهای مختلف با
           ذخیرهٔ ردیف (هر ۲ ثانیه) همگام می‌شود.
         </p>
+        <!-- Phase 5: move this doc under another doc, or back to the root. -->
+        <div class="doc-move mt-3 flex flex-wrap items-center gap-2" data-doc-move>
+          <label class="text-xs opacity-70" for="doc-move-parent">انتقال به زیرِ سندِ…</label>
+          <select
+            id="doc-move-parent"
+            class="select select-sm select-bordered bg-base-100"
+            bind:value={moveParentId}
+            data-move-parent
+            disabled={moving}
+          >
+            <option value="">— انتخاب والد —</option>
+            {#each parentOptions as opt (opt.id)}
+              <option value={opt.id}>{opt.title}</option>
+            {/each}
+          </select>
+          <button
+            type="button"
+            class="btn btn-ghost btn-sm min-h-11"
+            data-move-apply
+            disabled={!moveParentId || moving}
+            onclick={() => doMoveDoc(moveParentId)}
+          >
+            انتقال
+          </button>
+          {#if docRow.parent_id}
+            <button
+              type="button"
+              class="btn btn-ghost btn-sm min-h-11"
+              data-move-root
+              disabled={moving}
+              onclick={() => doMoveDoc(null)}
+            >
+              برگرداندن به ریشه
+            </button>
+          {/if}
+          {#if moveMsg}
+            <p
+              class="w-full text-xs {moveMsgKind === 'error'
+                ? 'text-error'
+                : 'text-success'}"
+              data-move-msg
+            >
+              {moveMsg}
+            </p>
+          {/if}
+        </div>
       </header>
       {#if mode === 'read'}
         <div class="doc-fade min-h-0 flex-1 px-4 py-3">

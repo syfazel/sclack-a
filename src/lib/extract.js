@@ -110,6 +110,104 @@ export function escapeSearchPattern(q) {
     .replace(/_/g, '\\_')
 }
 
+// ---------- Phase 5: nested docs (decision D4) ----------
+// Pure tree helpers over doc rows { id, parent_id, ... }. No Supabase,
+// no DOM — the sandbox probe runs them in Node unchanged. `parent_id`
+// empty/null means the doc is a root. Rows whose parent is missing,
+// self-pointing, or part of a parent cycle are treated as roots so a
+// bad row can never hide the tree or loop it.
+
+// Build the tree: roots in input order, each with `children` (also in
+// input order, recursively). Input rows are NOT mutated.
+export function buildDocTree(docs) {
+  const list = docs || []
+  const byId = new Map(list.map((d) => [d.id, d]))
+  const nodes = new Map(list.map((d) => [d.id, { ...d, children: [] }]))
+  const roots = []
+  for (const d of list) {
+    const node = nodes.get(d.id)
+    const pid = d.parent_id || null
+    // A usable parent: exists, is not the doc itself, and does not
+    // close a cycle back to this doc.
+    let ok = false
+    if (pid && pid !== d.id && byId.has(pid)) {
+      ok = true
+      const seen = new Set([d.id])
+      let cur = pid
+      while (cur) {
+        if (seen.has(cur)) {
+          ok = false
+          break
+        }
+        seen.add(cur)
+        const up = byId.get(cur)
+        cur = up ? up.parent_id || null : null
+      }
+    }
+    if (ok) nodes.get(pid).children.push(node)
+    else roots.push(node)
+  }
+  return roots
+}
+
+// Ancestors of `docId`, root first (the doc itself excluded).
+// Cycle-safe: stops at a repeated id or a missing parent.
+export function docAncestors(docs, docId) {
+  const byId = new Map((docs || []).map((d) => [d.id, d]))
+  const out = []
+  const seen = new Set([docId])
+  let cur = byId.get(docId)
+  while (cur && cur.parent_id) {
+    const pid = cur.parent_id
+    if (seen.has(pid)) break
+    seen.add(pid)
+    const up = byId.get(pid)
+    if (!up) break
+    out.unshift(up)
+    cur = up
+  }
+  return out
+}
+
+// True when `docId` is `ancestorId` itself or sits below it in the
+// tree (walk up from docId). Cycle-safe.
+export function isDocDescendantOf(docs, docId, ancestorId) {
+  if (docId === ancestorId) return true
+  const byId = new Map((docs || []).map((d) => [d.id, d]))
+  const seen = new Set([docId])
+  let cur = byId.get(docId)
+  while (cur && cur.parent_id) {
+    const pid = cur.parent_id
+    if (pid === ancestorId) return true
+    if (seen.has(pid)) break
+    seen.add(pid)
+    cur = byId.get(pid)
+  }
+  return false
+}
+
+// Validate a new parent for `docId` (null = back to the root).
+// Returns a clear Persian message, or null when the move is allowed.
+export function validateDocParent(docs, docId, newParentId) {
+  if (!newParentId) return null
+  if (newParentId === docId) return 'سند نمی‌تواند زیرِ خودش باشد.'
+  const list = docs || []
+  const parent = list.find((d) => d.id === newParentId)
+  if (!parent) return 'سند والد پیدا نشد.'
+  if (isDocDescendantOf(list, newParentId, docId)) {
+    return 'این سند زیرمجموعهٔ سندِ فعلی است؛ چرخه ساخته نمی‌شود.'
+  }
+  return null
+}
+
+// Candidate parents for the move picker: every doc except the doc
+// itself and its descendants (those would close a cycle).
+export function moveParentOptions(docs, docId) {
+  return (docs || []).filter(
+    (d) => d.id !== docId && !isDocDescendantOf(docs, d.id, docId)
+  )
+}
+
 // ---------- extractive summarisation ----------
 
 function splitLines(text) {

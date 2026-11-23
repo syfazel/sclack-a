@@ -2,6 +2,7 @@
   import { auth, ws, chat, notif, displayPrefs } from '../lib/store.svelte.js'
   import { loadProjectData } from '../lib/data.js'
   import { createDoc } from '../lib/docs.js'
+  import { buildDocTree } from '../lib/extract.js'
   import { signOut, validateChangePassword, changePassword } from '../lib/auth.js'
   import { toggleSimpleMode } from '../lib/display-prefs.js'
   import SearchBox from './SearchBox.svelte'
@@ -66,6 +67,18 @@
     } else {
       location.hash = '#/'
     }
+  }
+
+  // Phase 5 (D4): the docs list is a tree. Roots in loadDocs order
+  // (created_at); a collapsed parent hides its whole subtree.
+  const docTree = $derived(buildDocTree(ws.docs))
+  let collapsedDocIds = $state(new Set())
+
+  function toggleDocNode(id) {
+    const next = new Set(collapsedDocIds)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    collapsedDocIds = next
   }
 
   async function doCreateDoc() {
@@ -187,16 +200,51 @@
     {:else if ws.docs.length === 0}
       <p class="text-sm opacity-60">سندی نیست.</p>
     {:else}
-      <ul class="flex flex-col gap-1">
-        {#each ws.docs as d (d.id)}
-          <li>
+      <!-- Phase 5: nested tree — children under their parent, with a
+           collapse toggle and a child-count badge on parents. -->
+      {#snippet docNode(node)}
+        <li data-doc-node={node.id}>
+          <div class="flex items-center gap-1">
+            {#if node.children.length > 0}
+              <button
+                type="button"
+                class="btn btn-ghost btn-xs doc-tree-toggle shrink-0 px-1"
+                data-doc-toggle={node.id}
+                aria-expanded={!collapsedDocIds.has(node.id)}
+                aria-label={collapsedDocIds.has(node.id)
+                  ? 'باز کردن زیرسندهای «' + node.title + '»'
+                  : 'جمع کردن زیرسندهای «' + node.title + '»'}
+                onclick={() => toggleDocNode(node.id)}
+              >
+                {collapsedDocIds.has(node.id) ? '‹' : '▾'}
+              </button>
+            {:else}
+              <span class="w-6 shrink-0" aria-hidden="true"></span>
+            {/if}
             <a
-              href="#/doc/{d.id}"
-              class="btn btn-ghost btn-sm w-full justify-start px-2"
+              href="#/doc/{node.id}"
+              class="btn btn-ghost btn-sm min-w-0 flex-1 justify-start px-2"
             >
-              {d.title}
+              <span class="truncate">{node.title}</span>
+              {#if node.children.length > 0}
+                <span class="badge badge-sm doc-tree-count" data-doc-child-count={node.id}>
+                  {node.children.length}
+                </span>
+              {/if}
             </a>
-          </li>
+          </div>
+          {#if node.children.length > 0 && !collapsedDocIds.has(node.id)}
+            <ul class="doc-tree-children flex flex-col gap-1">
+              {#each node.children as child (child.id)}
+                {@render docNode(child)}
+              {/each}
+            </ul>
+          {/if}
+        </li>
+      {/snippet}
+      <ul class="flex flex-col gap-1" data-doc-tree>
+        {#each docTree as root (root.id)}
+          {@render docNode(root)}
         {/each}
       </ul>
     {/if}

@@ -771,3 +771,38 @@ html.simple-mode .ai-spinner {
 html.simple-mode .doc-fade {
   animation: none;
 }
+
+/* فاز ۵ — سند تودرتو (تصمیم D4): درخت نوار کناری، نان‌کرامب و
+   کنش انتقال در سربرگ سند. پالت گرم فازهای پیش، بدون بنفش. */
+.doc-tree-children {
+  padding-inline-start: 1rem;
+}
+.doc-tree-toggle {
+  min-height: 2rem;
+  min-width: 2rem;
+  font-size: 1rem;
+  line-height: 1;
+  color: #b45309;
+}
+.doc-tree-count {
+  background: #fef3c7;
+  color: #92400e;
+  border: none;
+}
+.doc-breadcrumb {
+  color: #78716c;
+}
+.doc-breadcrumb-link {
+  color: #b45309;
+  text-decoration: underline;
+  text-decoration-color: #fcd34d;
+}
+.doc-breadcrumb-link:hover {
+  background: #fef3c7;
+  border-radius: 0.25rem;
+}
+.doc-move {
+  background: var(--color-base-200, #f5f0e6);
+  border-radius: 0.75rem;
+  padding: 0.5rem;
+}
