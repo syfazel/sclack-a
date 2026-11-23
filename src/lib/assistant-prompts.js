@@ -1,12 +1,17 @@
-// «دستیار میوز» — رجیستری پرامپت (پکیج A/B).
+// «دستیار میوز» — رجیستری دستورها (پکیج A/B + جارویس ای آی فاز ۱).
 //
 // یک ورودی به‌ازای هر اکشن؛ ریل چیپ، کارت خانه و چیپ‌های خانه همه از همین
 // فایل رندر می‌شوند — پس «۳۰ دستور» دیگر شمارش کارت‌های هاردکد نیست.
-// شکل ورودی همان §۳ـ۲ گزارش تحقیق است (assistant-ai-research.md):
-// id، title_fa، group، trigger، system، userTemplate، context، output،
-// fallback، needsConfirm، maxTokens — به‌علاوهٔ n (شمارهٔ فهرست ۱۰۰تایی،
-// برای چیپ و پروب)، existing (کلید بخش قدیمی در AssistantView)، chip
-// (آیا در ریل چیپ می‌آید) و ai (آیا در پکیج B مدل برایش صدا زده می‌شود).
+// شکل ورودی: id، title_fa، group، trigger، output، fallback،
+// needsConfirm، maxTokens — به‌علاوهٔ n (شمارهٔ فهرست ۱۰۰تایی، برای
+// چیپ و پروب)، existing (کلید بخش قدیمی در AssistantView)، chip
+// (آیا در ریل چیپ می‌آید) و ai (آیا مدل برایش صدا زده می‌شود).
+//
+// فاز ۱ (جارویس ای آی): متن پرامپت سیستم و ساخت کانتکست از رجیستری
+// به تابع لبه رفت (supabase/functions/ai-assistant/prompts.js و
+// retrieve.js) — کلاینت فقط { action, params, history } می‌فرستد.
+// ورودی‌های رجیستری دیگر system / userTemplate / buildContext /
+// buildPrompt ندارند؛ ۷ پرامپت فارسی §۳ـ۴ حالا در تابع زندگی می‌کنند.
 //
 // فیلترهای تکراری پارامتری‌اند، نه تابع‌های جدا: #13/#15/#23 سه گونهٔ
 // اکشن list-messages و #58/#59/#63/#64 چهار گونهٔ list-tasks و #71/#72
@@ -54,11 +59,8 @@ import {
   loadTeamPulseToday,
   loadDailyReport,
   lastActivity,
-  listDocTemplates,
-  loadRoomMessages,
-  loadDocText
+  listDocTemplates
 } from './assistant.js'
-import { searchWorkspace } from './work.js'
 
 // ---------- loaderهای پارامتری (فیلترهای تکراری، یک پیاده‌سازی) ----------
 
@@ -80,78 +82,6 @@ function loadRemindersVariant(variant) {
   return listOverdueReminders()
 }
 
-// ---------- ساخت کانتکست برای ۴ اکشن هوشی پکیج B ----------
-// هر buildContext ردیف‌های خام را برمی‌گرداند (نه نتیجهٔ استخراجی)؛
-// buildPrompt از روی همان‌ها system/user را می‌سازد و فهرست شناسه‌های
-// منبع را برای اعتبارسنجیِ خروجیِ مدل برمی‌گرداند. سقف‌ها از
-// context هر ورودی می‌آیند (هزینه با طول کانتکست خطی بالا می‌رود).
-
-function truncateLines(lines, maxChars) {
-  let used = 0
-  const out = []
-  for (const line of lines) {
-    if (used + line.length > maxChars) break
-    out.push(line)
-    used += line.length + 1
-  }
-  return out
-}
-
-async function buildRoomContext({ roomId }) {
-  const messages = await loadRoomMessages(roomId)
-  const lines = messages.slice(-50).map(
-    (m) => `[${m.id}] ${m.body || ''}`
-  )
-  const kept = truncateLines(lines, 8000)
-  return {
-    text: kept.join('\n'),
-    sourceIds: messages.slice(-50).slice(0, kept.length).map((m) => m.id),
-    count: messages.length,
-    shown: kept.length
-  }
-}
-
-async function buildDocContext({ docId }) {
-  const { row, text } = await loadDocText(docId)
-  const paragraphs = String(text || '')
-    .split(/\n\s*\n/)
-    .map((p) => p.trim())
-    .filter((p) => p.length > 0)
-  const lines = paragraphs.map((p, i) => `[پاراگراف ${i + 1}] ${p}`)
-  const kept = truncateLines(lines, 8000)
-  return {
-    text: kept.join('\n\n'),
-    sourceIds: [],
-    paragraphCount: paragraphs.length,
-    shownParagraphs: kept.length,
-    title: row.title
-  }
-}
-
-async function buildAskContext({ question }) {
-  const hits = await searchWorkspace(question)
-  const lines = (hits || []).slice(0, 20).map(
-    (h) => `[${h.kind}:${h.id}] ${h.kindLabel} — ${h.title} (${h.place})`
-  )
-  const kept = truncateLines(lines, 8000)
-  return {
-    text: kept.join('\n'),
-    sourceIds: (hits || []).slice(0, 20).slice(0, kept.length).map((h) => ({ table: h.kind, id: h.id, title: h.title, place: h.place, link: h.link })),
-    hits: hits || [],
-    shown: kept.length
-  }
-}
-
-async function buildChatContext({ message, history }) {
-  const ask = await buildAskContext({ question: message })
-  const turns = (history || []).slice(-10)
-  return {
-    ...ask,
-    historyText: turns.map((t) => (t.role === 'user' ? 'کاربر: ' : 'دستیار: ') + t.content).join('\n'),
-    turns: turns.length
-  }
-}
-
 // ---------- رجیستری ----------
 
 export const ASSISTANT_ACTIONS = [
@@ -165,18 +95,10 @@ export const ASSISTANT_ACTIONS = [
     existing: 'room',
     chip: true,
     ai: true,
-    system: 'تو دستیار تیم sclack_A هستی. فقط از پیام‌هایی که به تو داده شده خلاصه می‌نویسی. هیچ جمله‌ای از خودت اضافه نمی‌کنی. هر نکته را با شمارهٔ پیام منبعش نقل می‌کنی. جواب فارسی و کوتاه است.',
-    userTemplate: 'این پیام‌های اتاق {room} است (آخرین {n} پیام): {context} — در حداکثر ۵ نکته، مهم‌ترین‌ها را با شمارهٔ منبع بنویس. اگر پیامی نیست، بنویس چیزی نیست.',
-    context: { maxRows: 50, maxChars: 8000 },
     output: { type: 'json', schema: { points: [{ text: 'string', source_ids: ['string'] }] } },
     fallback: 'extractRoomSummary',
     needsConfirm: false,
     maxTokens: 400,
-    buildContext: buildRoomContext,
-    buildPrompt: (ctx, inputs) => ({
-      user: 'این پیام‌های اتاق است (آخرین ' + ctx.shown + ' پیام از ' + ctx.count + ' پیام):\n' + ctx.text + '\n— در حداکثر ۵ نکته، مهم‌ترین‌ها را با شناسهٔ منبع بنویس. اگر پیامی نیست، بنویس چیزی نیست.',
-      sourceIds: ctx.sourceIds
-    }),
     runFallback: (inputs) => summarizeRoom(inputs.roomId)
   },
   {
@@ -188,19 +110,10 @@ export const ASSISTANT_ACTIONS = [
     existing: 'doc',
     chip: true,
     ai: true,
-    system: 'فقط از متن سندی که به تو داده شده خلاصه می‌نویسی. هیچ نکته‌ای از بیرون سند اضافه نمی‌کنی. هر نکته را با شمارهٔ پاراگراف منبعش نقل می‌کنی. جواب فارسی و کوتاه است؛ اگر سند خالی است، بگو خالی است.',
-    userTemplate: 'متن سند «{title}» (پاراگراف‌بندی‌شده): {context} — در حداکثر ۵ نکته، مهم‌ترین‌ها را با شمارهٔ پاراگراف بنویس.',
-    context: { maxChars: 8000 },
     output: { type: 'json', schema: { points: [{ text: 'string', paragraph: 'number' }] } },
     fallback: 'extractDocSummary',
     needsConfirm: false,
     maxTokens: 400,
-    buildContext: buildDocContext,
-    buildPrompt: (ctx) => ({
-      user: 'متن سند «' + (ctx.title || '') + '» (پاراگراف‌بندی‌شده، ' + ctx.shownParagraphs + ' پاراگراف از ' + ctx.paragraphCount + '):\n' + ctx.text + '\n— در حداکثر ۵ نکته، مهم‌ترین‌ها را با شمارهٔ پاراگراف بنویس.',
-      sourceIds: [],
-      paragraphCount: ctx.paragraphCount
-    }),
     runFallback: (inputs) => summarizeDoc(inputs.docId)
   },
   // --- پیشنهاد کار (قانون‌محور در B؛ پرامپت برای C آماده است) ---
@@ -214,9 +127,6 @@ export const ASSISTANT_ACTIONS = [
     chip: true,
     ai: false,
     aiFrom: 'C',
-    system: 'از پیام‌های داده‌شده فقط کارهایی را بیرون بکش که صریحاً یک اقدام خواسته‌اند. چیزی را که حدس است پیشنهاد نکن. مسئول را فقط وقتی بنویس که در پیام نام برده شده باشد.',
-    userTemplate: 'پیام‌ها: {context} — کارها را به‌صورت JSON برگردان: [{ title, description, assignee (فقط اگر در پیام آمده), due_hint }].',
-    context: { maxRows: 200 },
     output: { type: 'json', schema: [{ title: 'string', description: 'string', assignee: 'string|null', due_hint: 'string|null' }] },
     fallback: 'extractChatTaskSuggestions',
     needsConfirm: true,
@@ -233,9 +143,6 @@ export const ASSISTANT_ACTIONS = [
     chip: true,
     ai: false,
     aiFrom: 'C',
-    system: 'از متن سند داده‌شده فقط کارهایی را بیرون بکش که صریحاً یک اقدام خواسته‌اند. چیزی را که حدس است پیشنهاد نکن. مسئول را فقط وقتی بنویس که در سند نام برده شده باشد؛ سررسید را فقط وقتی بنویس که در سند آمده باشد.',
-    userTemplate: 'متن سند: {context} — کارها را به‌صورت JSON برگردان: [{ title, description, assignee (فقط اگر در سند آمده), due_hint }].',
-    context: { maxChars: 8000 },
     output: { type: 'json', schema: [{ title: 'string', description: 'string', assignee: 'string|null', due_hint: 'string|null' }] },
     fallback: 'extractDocTaskSuggestions',
     needsConfirm: true,
@@ -253,9 +160,6 @@ export const ASSISTANT_ACTIONS = [
     chip: true,
     ai: false,
     aiFrom: 'C',
-    system: 'تو نگهبان مهلت‌های تیم sclack_A هستی. فقط از کارهایی که به تو داده شده حرف می‌زن. تاریخ امروز {today} است (میلادی و جلالی هر دو داده شده). هیچ تاریخی را از خودت نساز؛ اگر کاری تاریخ ندارد، بگو تاریخ ندارد. خطر را فقط از سررسید و وضعیت کار بسنج، نه از حدس.',
-    userTemplate: 'کارها (با سررسید و مسئول): {context} — سه سطل را برگردان: عقب‌مانده، امروز، ۴۸ ساعت آینده؛ برای هر کار یک جمله دلیل با شناسهٔ کار.',
-    context: {},
     output: { type: 'json', schema: { buckets: { overdue: [{ task_id: 'string', reason: 'string' }], today: [], next48h: [] } } },
     fallback: 'computeDeadlineGuardian',
     needsConfirm: false,
@@ -272,18 +176,10 @@ export const ASSISTANT_ACTIONS = [
     existing: 'ask',
     chip: true,
     ai: true,
-    system: 'فقط از ردیف‌هایی که به تو داده شده جواب بده. اگر جواب در ردیف‌ها نیست، بگو پیدا نشد — چیزی نساز. هر جملهٔ جواب را با شناسهٔ ردیف منبعش همراه کن.',
-    userTemplate: 'سؤال: {question} — ردیف‌های مرتبط: {context} — جواب کوتاه فارسی با منبع.',
-    context: { maxRows: 20, maxChars: 8000 },
     output: { type: 'json', schema: { answer: 'string', sources: [{ table: 'string', id: 'string' }] } },
     fallback: 'searchWorkspace',
     needsConfirm: false,
     maxTokens: 400,
-    buildContext: buildAskContext,
-    buildPrompt: (ctx, inputs) => ({
-      user: 'سؤال: ' + inputs.question + '\n— ردیف‌های مرتبط:\n' + ctx.text + '\n— جواب کوتاه فارسی با منبع. اگر جواب در ردیف‌ها نیست، بنویس پیدا نشد.',
-      sourceIds: ctx.sourceIds
-    }),
     runFallback: (inputs) => askWorkspace(inputs.question)
   },
   {
@@ -295,18 +191,10 @@ export const ASSISTANT_ACTIONS = [
     existing: 'chat',
     chip: false,
     ai: true,
-    system: 'تو دستیار تیم sclack_A هستی. فقط از ردیف‌هایی که به‌عنوان کانتکست به تو داده شده (پیام‌ها، کارها، سندها) و از سابقهٔ همین گفت‌وگو جواب بده. اگر جواب در آن‌ها نیست، بگو پیدا نشد — چیزی نساز، حدس نزن. جواب کوتاه و فارسی است. تو هیچ‌چیز را نمی‌سازی، نمی‌بندی و نمی‌فرستی؛ اگر کاربر کاری خواست، آن را به‌صورت پیشنهاد با منبع نشان بده تا خودش با یک تپ تأیید کند.',
-    userTemplate: 'سابقهٔ گفت‌وگو (آخرین {n} نوبت): {history} — ردیف‌های مرتبط: {context} — پیام کاربر: {message}',
-    context: { maxRows: 20, maxChars: 8000 },
     output: { type: 'json', schema: { answer: 'string', sources: [{ table: 'string', id: 'string' }] } },
     fallback: 'searchWorkspace',
     needsConfirm: false,
     maxTokens: 400,
-    buildContext: buildChatContext,
-    buildPrompt: (ctx, inputs) => ({
-      user: 'سابقهٔ گفت‌وگو (آخرین ' + ctx.turns + ' نوبت):\n' + (ctx.historyText || '—') + '\n— ردیف‌های مرتبط:\n' + ctx.text + '\n— پیام کاربر: ' + inputs.message + '\n— جواب کوتاه فارسی با منبع. اگر جواب در ردیف‌ها و سابقه نیست، بنویس پیدا نشد.',
-      sourceIds: ctx.sourceIds
-    }),
     runFallback: (inputs) => askWorkspace(inputs.message)
   },
   // --- سلامت پروژه (G6) ---

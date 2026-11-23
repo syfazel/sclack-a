@@ -4,7 +4,8 @@
 // Layers:
 //  1. STATIC (source text of the registry): 31 entries, 30 numbered
 //     chips + open-chat (n: null), the 30 numbers are exactly the
-//     100-list set, 12 groups, 7 §3-4 prompts with system text, 4 AI
+//     100-list set, 12 groups, no system text in the registry (the 7
+//     §3-4 prompts live in the function now — Phase 1), 4 AI
 //     actions, G6_META 24, no hardcoded «۸ پیام» in the teaser.
 //  2. MOUNT (the REAL built bundle in jsdom with a stubbed Supabase
 //     backend + a stubbed /functions/v1/ai-assistant route): chips
@@ -101,7 +102,25 @@ function staticChecks() {
     })
   )
   const systems = (src.match(/^\s+system: '/gm) || []).length
-  check('registry: 7 §3-4 prompts with system text', systems === 7, String(systems))
+  check('registry: no system text in the registry (Phase 1: prompts live in the function)', systems === 0, String(systems))
+  check(
+    'registry: no buildContext/buildPrompt properties in the registry (Phase 1: retrieval is server-side)',
+    !/buildContext\s*:/.test(src) && !/buildPrompt\s*:/.test(src)
+  )
+  const fnPrompts = readFileSync(
+    new URL('../supabase/functions/ai-assistant/prompts.js', import.meta.url).pathname,
+    'utf8'
+  )
+  const promptKeys = [...fnPrompts.matchAll(/^  '([a-z-]+)':$/gm)].map((m) => m[1])
+  check(
+    'function: the 7 §3-4 system prompts live in prompts.js',
+    JSON.stringify(promptKeys.sort()) ===
+      JSON.stringify([
+        'ask-workspace', 'deadline-guardian', 'open-chat', 'suggest-task-from-chat',
+        'suggest-task-from-doc', 'summarize-doc', 'summarize-room'
+      ]),
+    JSON.stringify(promptKeys)
+  )
   const meta = src.match(/const G6_META = \{([\s\S]*?)\n\}/)
   const metaCount = meta ? (meta[1].match(/^\s+\d+:/gm) || []).length : 0
   check('registry: G6_META has 24 desc/scope entries', metaCount === 24, String(metaCount))

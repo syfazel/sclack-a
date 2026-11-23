@@ -1,9 +1,13 @@
-// «دستیار میوز» — هستهٔ دستیار (پکیج A/B).
+// «دستیار میوز» — هستهٔ دستیار (پکیج A/B + جارویس ای آی فاز ۱).
 //
-// یک `dispatch` برای همهٔ اکشن‌ها: بارگذاری کانتکست → اجرا →
-// اعتبارسنجی → خروجی. AssistantView دیگر ۳۰ تابع جدا صدا نمی‌زند؛
-// فقط dispatch می‌کند. موتور اجرا برای هر اکشن از رجیستری می‌آید
-// (lib/assistant-prompts.js):
+// یک `dispatch` برای همهٔ اکشن‌ها: اجرا → اعتبارسنجیِ شکلی → خروجی.
+// بازیابی و پرامپت سیستم سمت سرور است (فاز ۱): AssistantView دیگر
+// کانتکست نمی‌سازد؛ dispatch فقط { action, params, history } می‌فرستد
+// و تابع خودش از Supabase می‌خواند (با JWT کاربر) و منبع‌ها را برابر
+// خوانده‌های خودش اعتبارسنجی می‌کند (R1 سرور-محور). اعتبارسنجی اینجا
+// فقط شکلی است (آرایه/رشته بودن) — مالک منبع‌ها تابع است.
+// AssistantView دیگر ۳۰ تابع جدا صدا نمی‌زند؛ فقط dispatch می‌کند.
+// موتور اجرا برای هر اکشن از رجیستری می‌آید (lib/assistant-prompts.js):
 //  * اکشن‌های ai:true — اول Edge Function 'ai-assistant' را صدا می‌زنند؛
 //    اگر تابع در دسترس نبود (دیپلوی نشده / کلید وصل نشده / خطا)،
 //    همان تابع استخراجی امروز اجرا می‌شود (R7) — دستیار هرگز خالی
@@ -103,46 +107,45 @@ async function callAiAssistant(body) {
   return { ok: true, data }
 }
 
-// ---------- اعتبارسنجی خروجی مدل (سمت کلاینت؛ تابع هم اعتبارسنجی می‌کند) ----------
-// R1: هر ادعای واقعی باید شناسهٔ ردیف منبع داشته باشد؛ منبعی که در
-// کانتکست فرستاده نشده بود، دور انداخته می‌شود، نه نمایش داده می‌شود.
+// ---------- اعتبارسنجی خروجی مدل (سمت کلاینت؛ فقط شکلی) ----------
+// R1 سرور-محور (فاز ۱): تابع منبع‌ها را برابر خوانده‌های خودش
+// اعتبارسنجی می‌کند؛ اینجا فقط شکلِ خروجی چک می‌شود (نکتهٔ متنی،
+// جواب رشته‌ای، منبع‌های { table, id }) و همان‌طور که تابع فرستاده
+// برمی‌گردد — کلاینت دیگر منبع را از کانتکست خودش فیلتر نمی‌کند،
+// چون کانتکستی ندارد.
 
-function validRoomSummary(data, sourceIds) {
+function validRoomSummary(data) {
   if (!data || !Array.isArray(data.points)) return null
-  const known = new Set(sourceIds || [])
   const points = data.points
     .filter((p) => p && typeof p.text === 'string' && p.text.trim().length > 0)
     .map((p) => ({
       text: p.text.trim(),
-      source_ids: (Array.isArray(p.source_ids) ? p.source_ids : []).filter((id) => known.has(id))
+      source_ids: (Array.isArray(p.source_ids) ? p.source_ids : []).filter((id) => typeof id === 'string')
     }))
     .filter((p) => p.source_ids.length > 0)
   if (points.length === 0) return { found: false, points: [] }
   return { found: true, points }
 }
 
-function validDocSummary(data, paragraphCount) {
+function validDocSummary(data) {
   if (!data || !Array.isArray(data.points)) return null
-  const max = Number(paragraphCount) || 0
   const points = data.points
     .filter((p) => p && typeof p.text === 'string' && p.text.trim().length > 0)
     .map((p) => ({
       text: p.text.trim(),
       paragraph: Number(p.paragraph) || null
     }))
-    .filter((p) => p.paragraph === null || (p.paragraph >= 1 && (max === 0 || p.paragraph <= max)))
   if (points.length === 0) return { found: false, points: [] }
   return { found: true, points }
 }
 
-function validAnswer(data, sourceIds) {
+function validAnswer(data) {
   if (!data || typeof data.answer !== 'string' || data.answer.trim().length === 0) {
     return { found: false, answer: '', sources: [] }
   }
-  const known = new Map((sourceIds || []).map((s) => [s.table + ':' + s.id, s]))
-  const sources = (Array.isArray(data.sources) ? data.sources : [])
-    .map((s) => known.get(s.table + ':' + s.id))
-    .filter(Boolean)
+  const sources = (Array.isArray(data.sources) ? data.sources : []).filter(
+    (s) => s && typeof s.table === 'string' && typeof s.id === 'string'
+  )
   return { found: true, answer: data.answer.trim(), sources }
 }
 
@@ -187,20 +190,26 @@ export async function dispatch(actionId, inputs = {}) {
 }
 
 async function tryAi(entry, inputs) {
-  let ctx
-  try {
-    ctx = await entry.buildContext(inputs)
-  } catch {
-    return null
-  }
-  const prompt = entry.buildPrompt(ctx, inputs)
+  // فاز ۱: کلاینت فقط { action, params, history } می‌فرستد — نه
+  // کانتکست، نه پرامپت سیستم، نه شناسهٔ منبع. تابع خودش می‌خواند.
+  const params = {}
+  if (entry.id === 'summarize-room') params.roomId = inputs.roomId
+  else if (entry.id === 'summarize-doc') params.docId = inputs.docId
+  else if (entry.id === 'ask-workspace') params.question = inputs.question
+  else if (entry.id === 'open-chat') params.message = inputs.message
   const body = {
     action: entry.id,
-    system: entry.system,
-    user: prompt.user,
-    maxTokens: entry.maxTokens,
-    sourceIds: prompt.sourceIds || [],
-    paragraphCount: prompt.paragraphCount || 0
+    params,
+    maxTokens: entry.maxTokens
+  }
+  if (entry.id === 'open-chat' && Array.isArray(inputs.history)) {
+    body.history = inputs.history
+      .slice(-10)
+      .map((t) => ({
+        role: t.role === 'assistant' ? 'assistant' : 'user',
+        content: String(t.content || '')
+      }))
+      .filter((t) => t.content.trim().length > 0)
   }
   const res = await callAiAssistant(body)
   if (!res.ok) {
@@ -231,10 +240,10 @@ async function tryAi(entry, inputs) {
     }
     return null
   }
-  if (entry.id === 'summarize-room') return validRoomSummary(res.data, prompt.sourceIds)
-  if (entry.id === 'summarize-doc') return validDocSummary(res.data, prompt.paragraphCount)
+  if (entry.id === 'summarize-room') return validRoomSummary(res.data)
+  if (entry.id === 'summarize-doc') return validDocSummary(res.data)
   if (entry.id === 'ask-workspace' || entry.id === 'open-chat') {
-    return validAnswer(res.data, prompt.sourceIds)
+    return validAnswer(res.data)
   }
   return null
 }
