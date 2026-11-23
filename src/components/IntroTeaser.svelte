@@ -10,7 +10,13 @@
      صحنهٔ سه‌بعدی تازه‌ای ندارد؛ HeroScene دست نخورده پشت آن می‌ماند.
      ساعت در Login است و beat را prop می‌دهد (۰ تا ۲۹؛ پایان ۳۰۰۰۰ms). -->
 <script>
+  import { chipGroups } from '../lib/assistant-prompts.js'
+  import { faNum } from '../lib/extract.js'
+
   let { beat = 0, onskip = () => {} } = $props()
+
+  // شمارش ریل از رجیستری می‌آید، نه هاردکد.
+  const chipCount = chipGroups().reduce((n, g) => n + g.cmds.length, 0)
 
   const base = import.meta.env.BASE_URL
   let videoBError = $state(false)
@@ -226,9 +232,9 @@
           {/if}
           {#if beat >= 25}
             <div class="station station-hero glass-card" data-station="19">
-              <div class="assistant-rail">۳۰ دستور</div>
+              <div class="assistant-rail">{faNum(chipCount)} دستور</div>
               {#if beat >= 26}
-                <div class="assistant-result">خلاصهٔ اتاق: ۸ پیام</div>
+                <div class="assistant-result">خط‌های برگزیدهٔ اتاق</div>
               {/if}
               <span class="station-label">دستیار میوز</span>
             </div>

@@ -596,7 +596,7 @@
         <span class="badge badge-warning badge-sm" data-unread-badge>{notif.unreadCount}</span>
       {/if}
     </a>
-    <p class="hidden text-xs opacity-50 lg:block">دستیار فقط استخراجی است؛ جمله‌ای ساخته نمی‌شود.</p>
+    <p class="hidden text-xs opacity-50 lg:block">دستیار میوز — جواب از ردیف‌های واقعی، با ذکر منبع؛ اگر چیزی نیست، «پیدا نشد» می‌گوید.</p>
   </div>
 
   <section class="hidden lg:block">

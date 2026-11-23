@@ -1137,8 +1137,8 @@ async function main() {
   check('G6 mount #92: guardian tasks + pulse numbers + unread mention all present',
     g6Text(w, 92).includes('کار امروز من') && g6Text(w, 92).includes('کار عقب‌مانده') &&
     g6Text(w, 92).includes('کار بدون مسئول') && g6Text(w, 92).includes('منشن از زهرا'))
-  check('G6 mount #92: guardian recorded exactly one reminder pointer (4 seeded + 1)',
-    db.notifications.length === 5, JSON.stringify(db.notifications.map((n) => [n.type, n.target_id])))
+  check('G6 mount #92: running the report records no pointer by itself (still 4 notifications)',
+    db.notifications.length === 4, JSON.stringify(db.notifications.map((n) => [n.type, n.target_id])))
 
   // #95 last activity per member (before #99 creates a doc — a new doc
   // would become yasin's newest activity and change the expectation).
@@ -1180,6 +1180,20 @@ async function main() {
   const gText = norm(guardianSection().textContent)
   check('G6 mount #57: guardian groups show 1/1/1',
     gText.includes('کارهای امروز (1)') && gText.includes('کارهای عقب‌مانده (1)') && gText.includes('سررسیدهای نزدیک (۴۸ ساعت آینده) (1)'), gText.slice(0, 300))
+  check('G6 mount #57: running the guardian records no pointer by itself (still 4 notifications)',
+    db.notifications.length === 4, String(db.notifications.length))
+  // R8: the pointer is recorded only by the tap — never as a side
+  // effect of reading the summary.
+  const recordBtn = w.document.querySelector('[data-guardian-record]')
+  check('G6 mount #57: the record-pointers button is offered for the overdue task', !!recordBtn)
+  recordBtn.click()
+  await waitFor(w, () => db.notifications.length === 5, 10000, 'pointer recorded after the tap')
+  check('G6 mount #57: the tap records exactly one pointer (4 seeded + 1)',
+    db.notifications.length === 5, JSON.stringify(db.notifications.map((n) => [n.type, n.target_id])))
+  check('G6 mount #57: after the tap the button is gone (all overdue tasks have pointers)',
+    !w.document.querySelector('[data-guardian-record]'))
+  clickButton(w, w.document, 'خلاصهٔ امروز')
+  await sleep(500)
   check('G6 mount #57: second summary adds no duplicate pointer (still 5 notifications)',
     db.notifications.length === 5, String(db.notifications.length))
 
@@ -1202,7 +1216,13 @@ async function main() {
   const g3Ids = [...guardianSection().querySelectorAll('[data-guardian-task]')].map((li) => li.getAttribute('data-guardian-task'))
   check('G6 mount #57: guardian rows for the non-current project are exactly its own three tasks',
     JSON.stringify([...g3Ids].sort()) === JSON.stringify(['p3-task-overdue', 'p3-task-soon', 'p3-task-today']), JSON.stringify(g3Ids))
-  check('G6 mount #57: non-current guardian records exactly one fresh pointer for its own overdue task (6 notifications)',
+  check('G6 mount #57: non-current guardian records no pointer by itself (still 5 notifications)',
+    db.notifications.length === 5, String(db.notifications.length))
+  const recordBtn3 = w.document.querySelector('[data-guardian-record]')
+  check('G6 mount #57: the record button is offered for the non-current project too', !!recordBtn3)
+  recordBtn3.click()
+  await waitFor(w, () => db.notifications.length === 6, 10000, 'pointer recorded for project 3 after the tap')
+  check('G6 mount #57: the tap records exactly one fresh pointer for its own overdue task (6 notifications)',
     db.notifications.length === 6, String(db.notifications.length))
   // Project 4 has no rows at all, so its three task groups must all
   // be (0) with no task rows — but the member's own reminder today

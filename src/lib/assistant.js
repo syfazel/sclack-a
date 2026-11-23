@@ -44,10 +44,16 @@ import {
   TASK_STATUS_LABEL
 } from './extract.js'
 
-// «دستیار میوز» — EXTRACTIVE-ONLY by design (no model text generation).
+// «دستیار میوز» — هستهٔ اجرایی دستورها (پکیج B).
 // Every answer quotes or counts real content; when there is nothing real,
 // the answer is found: false. The jigari accent (--jigari) lives ONLY
 // in the assistant panel.
+// موتورها: ۴ اکشن هوشی (خلاصهٔ اتاق/سند، سؤال، گفت‌وگوی باز) از راه
+// Edge Function 'ai-assistant' به جمینای می‌روند وگرنه به همان
+// استخراجی امروز برمی‌گردند (هسته در lib/assistant-core.js، رجیستری
+// در lib/assistant-prompts.js)؛ بقیهٔ دستورها همیشه قانون‌محورند.
+// هیچ نوشته‌ای بی‌تپ نیست: ساخت کار/سند و بستن پروژه با تأیید یک‌تپی
+// کاربرند و اشاره‌گر یادآوری نگهبان هم از پکیج A تپ‌دار است (R8).
 
 export async function loadDocText(docId) {
   const row = await loadDocRow(docId)
@@ -55,7 +61,7 @@ export async function loadDocText(docId) {
   return { row, text: textFromStateB64(b64) }
 }
 
-export async function summarizeRoom(roomId) {
+export async function loadRoomMessages(roomId) {
   if (!sb || !roomId) throw new Error('اتاقی انتخاب نشده است.')
   const { data, error } = await sb
     .from('messages')
@@ -64,6 +70,11 @@ export async function summarizeRoom(roomId) {
     .order('created_at', { ascending: true })
     .limit(200)
   if (error) throw error
+  return data || []
+}
+
+export async function summarizeRoom(roomId) {
+  const data = await loadRoomMessages(roomId)
   return extractRoomSummary(data || [], (id) => memberName(id))
 }
 
@@ -82,14 +93,7 @@ export async function suggestTasksFromDoc(docId) {
 // carries the verbatim quote, the suggested assignee (the message's
 // author) and the suggested due date; nothing is created here.
 export async function suggestTasksFromChat(roomId) {
-  if (!sb || !roomId) throw new Error('اتاقی انتخاب نشده است.')
-  const { data, error } = await sb
-    .from('messages')
-    .select('*')
-    .eq('room_id', roomId)
-    .order('created_at', { ascending: true })
-    .limit(200)
-  if (error) throw error
+  const data = await loadRoomMessages(roomId)
   return extractChatTaskSuggestions(data || [])
 }
 
@@ -117,14 +121,18 @@ export async function createTaskFromSuggestion(suggestion, { projectId, linkType
 
 // P01 D1: deadline guardian. Loads the project's tasks + the member's
 // reminders, computes the three buckets (today / overdue / due within
-// 48 h), and records a reminder pointer for each overdue task. The
-// pointer goes to the SIGNED-IN member (the person reading the summary):
+// 48 h). R8 (پکیج A): ثبت اشاره‌گر یادآوری برای کارهای عقب‌مانده دیگر
+// خودکار/بی‌صدا نیست — پیش‌فرض هیچ‌چیز ثبت نمی‌شود؛ UI دکمهٔ «ثبت
+// یادآوری» را نشان می‌دهد و فقط با تپ کاربر recordOverdueReminderPointers
+// صدا زده می‌شود. loadDeadlineGuardian فقط می‌شمرد چند کار عقب‌مانده
+// هنوز اشاره‌گر ندارند (overdueUnrecorded)، بی‌آنکه بنویسد.
+// The pointer goes to the SIGNED-IN member (the person reading the summary):
 // the notifications table's SELECT policy is recipient-only, so a
 // pointer recorded for someone else could never be de-duplicated by
 // its viewer — recording for the viewer keeps the check exact and the
 // summary idempotent. The row is a pointer only (type + target_id);
 // the table has no text column, so no message text is ever stored.
-export async function loadDeadlineGuardian(projectId) {
+export async function loadDeadlineGuardian(projectId, { recordPointers = false } = {}) {
   if (!projectId) throw new Error('پروژه انتخاب نشده است.')
   // Direct read of THIS project's tasks — not via loadTasks/ws.tasks:
   // loadTasks drops the result when projectId differs from the
@@ -136,19 +144,39 @@ export async function loadDeadlineGuardian(projectId) {
   const { tasks } = await queryProjectRows(projectId)
   await loadReminders()
   const guardian = computeDeadlineGuardian(tasks, ws.reminders, new Date())
-  const remindersRecorded = await ensureOverdueReminderPointers(guardian.overdue)
-  return { ...guardian, remindersRecorded }
+  const overdueUnrecorded = await countOverdueWithoutPointer(guardian.overdue)
+  const remindersRecorded = recordPointers
+    ? await ensureOverdueReminderPointers(guardian.overdue)
+    : 0
+  return { ...guardian, remindersRecorded, overdueUnrecorded }
 }
 
-export async function ensureOverdueReminderPointers(overdueTasks) {
-  if (!sb || !auth.member || !overdueTasks.length) return 0
+async function loadReminderPointerTargets() {
+  if (!sb || !auth.member) return new Set()
   const { data, error } = await sb
     .from('notifications')
     .select('target_id')
     .eq('type', 'reminder')
     .eq('user_id', auth.member.id)
   if (error) throw error
-  const have = new Set((data || []).map((r) => r.target_id))
+  return new Set((data || []).map((r) => r.target_id))
+}
+
+// چند کار عقب‌مانده هنوز اشاره‌گر یادآوری ندارند — فقط خواندن، بدون نوشتن.
+export async function countOverdueWithoutPointer(overdueTasks) {
+  if (!overdueTasks?.length) return 0
+  const have = await loadReminderPointerTargets()
+  return overdueTasks.filter((t) => !have.has(t.id)).length
+}
+
+// R8: ثبت اشاره‌گر یادآوری — فقط با تپ کاربر (از بخش نگهبان در پنل).
+export async function recordOverdueReminderPointers(overdueTasks) {
+  return ensureOverdueReminderPointers(overdueTasks || [])
+}
+
+export async function ensureOverdueReminderPointers(overdueTasks) {
+  if (!sb || !auth.member || !overdueTasks.length) return 0
+  const have = await loadReminderPointerTargets()
   let recorded = 0
   for (const t of overdueTasks) {
     if (have.has(t.id)) continue
@@ -175,9 +203,9 @@ export async function askWorkspace(query) {
 // Every loader below returns { found, ... } — found:false means "nothing
 // real here", rendered as «پیدا نشد», never a fabricated number. No
 // loader creates, changes or deletes anything by itself; the only
-// writes are the documented ones: the guardian's reminder pointers
-// (D1, existing) and the user's one-tap actions (close project,
-// create from a template, create a task from a suggestion).
+// writes are the user's one-tap actions (close project, create from a
+// template, create a task from a suggestion, record the guardian's
+// reminder pointers — R8, tap-only since package A).
 
 // Direct project-scoped reads (local rows, not ws): the ws loaders
 // discard results for a non-current project (D6 bug 5 guard), so a
@@ -572,8 +600,9 @@ export async function loadTeamPulseToday() {
 }
 
 // #92 (100-list): daily team report — guardian + pulse + my unread
-// mentions, each with its own empty state. The guardian's reminder
-// pointers (D1) are the one documented silent write.
+// mentions, each with its own empty state. The guardian runs WITHOUT
+// recording reminder pointers here (R8: recording is a tap in the
+// guardian section, never a side effect of reading a report).
 export async function loadDailyReport(projectId) {
   if (!projectId) throw new Error('پروژه انتخاب نشده است.')
   const guardian = await loadDeadlineGuardian(projectId)

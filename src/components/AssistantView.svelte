@@ -3,47 +3,21 @@
   import { ws, displayPrefs } from '../lib/store.svelte.js'
   import { toggleSimpleMode } from '../lib/display-prefs.js'
   import { memberName } from '../lib/data.js'
+  import { dispatch, aiStatus, loadChatHistory, saveChatExchange, historyAvailable } from '../lib/assistant-core.js'
+  import { chipGroups, g6Actions } from '../lib/assistant-prompts.js'
+  import { faNum } from '../lib/extract.js'
   import {
-    summarizeRoom,
-    summarizeDoc,
-    suggestTasksFromDoc,
-    suggestTasksFromChat,
-    loadDeadlineGuardian,
     createTaskFromSuggestion,
-    askWorkspace,
-    projectStatus,
-    projectDeadline,
-    suggestCloseProject,
     closeProjectFromSuggestion,
-    listTodayMessages,
-    listUnansweredMessages,
-    listOpenThreads,
-    loadMyMentions,
-    loadUnreadNotifications,
-    listStaleDocs,
-    listOpenComments,
-    listDocVersions,
-    listFreshFiles,
-    listUnattachedFiles,
-    listMyTodayTasks,
-    listOverdueTasks,
-    listUndatedTasks,
-    listUnassignedTasks,
-    listTodayReminders,
-    listOverdueReminders,
-    searchDocsText,
-    loadTeamPulseToday,
-    loadDailyReport,
-    lastActivity,
-    listDocTemplates,
-    createDocFromTemplate
+    createDocFromTemplate,
+    recordOverdueReminderPointers
   } from '../lib/assistant.js'
 
   function fmtDue(iso) {
     return iso ? new Date(iso).toLocaleDateString('fa-IR') : '—'
   }
 
-  // --- G6: 24 new commands (the other 6 of the top 30 — room summary,
+  // --- G6: new commands (the rest of the top list — room summary,
   // chat-to-task, doc summary, doc task suggestions, deadline guardian,
   // ask workspace — already have their sections above) ---
   // One shared project / doc / word input; each command card has its
@@ -59,93 +33,24 @@
     if (!g6ProjectId && ws.currentProjectId) g6ProjectId = ws.currentProjectId
   })
 
-  // n = the number in the 100-command list (g6-tafsil.md).
-  const G6_COMMANDS = [
-    { n: 1, title: 'وضعیت پروژه', desc: 'کارهای باز / در حال انجام / تمام‌شده، عقب‌مانده، سندها، فایل‌های تازه.', scope: 'project', run: (pid) => projectStatus(pid) },
-    { n: 3, title: 'مهلت پروژه', desc: 'مهلت پروژه، روزهای مانده و کارهای ناتمام تا مهلت.', scope: 'project', run: (pid) => projectDeadline(pid) },
-    { n: 8, title: 'پیشنهاد بستن پروژه', desc: 'وقتی همهٔ کارها تمام شده‌اند و پروژه در بازبینی است، بستن را پیشنهاد می‌دهد — بستن فقط با یک تپ شما.', scope: 'project', run: (pid) => suggestCloseProject(pid) },
-    { n: 13, title: 'پیام‌های امروز', desc: 'پیام‌های امروز تهران در همهٔ اتاق‌ها، تازه‌ترین اول.', scope: 'none', run: () => listTodayMessages() },
-    { n: 15, title: 'پیام‌های بی‌پاسخ', desc: 'پیام‌هایی که هیچ پاسخی نگرفته‌اند — قدیمی‌ترین اول.', scope: 'project', run: (pid) => listUnansweredMessages(pid) },
-    { n: 23, title: 'تردهای باز', desc: 'بحث‌هایی که پاسخ دارند، با شمار پاسخ‌ها و آخرین پاسخ.', scope: 'project', run: (pid) => listOpenThreads(pid) },
-    { n: 25, title: 'منشن‌های من', desc: 'منشن‌های من، خوانده‌نشده اول — فقط اتاق و فرستنده، بدون متن پیام.', scope: 'none', run: () => loadMyMentions() },
-    { n: 27, title: 'اعلان‌های خوانده‌نشده', desc: 'اعلان‌های خوانده‌نشدهٔ من، دسته‌بندی‌شده بر اساس نوع.', scope: 'none', run: () => loadUnreadNotifications() },
-    { n: 33, title: 'سندهای بدون تغییر', desc: 'سندهایی که ۷ روز یا بیشتر ویرایش نشده‌اند.', scope: 'project', run: (pid) => listStaleDocs(pid) },
-    { n: 41, title: 'نظرهای باز یک سند', desc: 'نظرهای حل‌نشدهٔ سند با نقل عین متن و لنگر.', scope: 'doc', run: (pid, docId) => listOpenComments(docId) },
-    { n: 45, title: 'نسخه‌های یک سند', desc: 'فهرست نسخه‌ها با شماره، نویسنده، یادداشت و زمان.', scope: 'doc', run: (pid, docId) => listDocVersions(docId) },
-    { n: 49, title: 'فایل‌های تازه', desc: 'فایل‌های ۷ روز اخیر با اندازه و فرستنده.', scope: 'project', run: (pid) => listFreshFiles(pid) },
-    { n: 54, title: 'فایل‌های بی‌وصل', desc: 'فایل‌هایی که آپلود شده‌اند ولی به هیچ کار/سند/اتاقی وصل نیستند.', scope: 'project', run: (pid) => listUnattachedFiles(pid) },
-    { n: 58, title: 'کارهای امروز من', desc: 'کارهای سپرده‌شده به من با سررسید امروز تهران.', scope: 'project', run: (pid) => listMyTodayTasks(pid) },
-    { n: 59, title: 'کارهای عقب‌مانده', desc: 'کارهای ناتمام با سررسید گذشته، عقب‌مانده‌ترین اول.', scope: 'project', run: (pid) => listOverdueTasks(pid) },
-    { n: 63, title: 'کارهای بدون سررسید', desc: 'کارهای ناتمام بدون تاریخ سررسید — در هیچ منویی دیده نمی‌شوند.', scope: 'project', run: (pid) => listUndatedTasks(pid) },
-    { n: 64, title: 'کارهای بدون مسئول', desc: 'کارهای ناتمام بدون مسئول.', scope: 'project', run: (pid) => listUnassignedTasks(pid) },
-    { n: 71, title: 'یادآوری‌های امروز من', desc: 'یادآوری‌های من با سررسید امروز تهران.', scope: 'none', run: () => listTodayReminders() },
-    { n: 72, title: 'یادآوری‌های عقب‌مانده', desc: 'یادآوری‌های من با سررسید گذشته و انجام‌نشده.', scope: 'none', run: () => listOverdueReminders() },
-    { n: 84, title: 'جست‌وجو در متن سندها', desc: 'خط‌هایی از متن واقعی سندها که واژه را دارند، با نقل عین خط.', scope: 'project-word', run: (pid, docId, word) => searchDocsText(pid, word) },
-    { n: 85, title: 'نبض تیم امروز', desc: 'چهار عدد نبض: پیام‌های امروز، کارهای تمام‌شدهٔ این هفته، سندهای فعال، فایل‌های تازه.', scope: 'none', run: () => loadTeamPulseToday() },
-    { n: 92, title: 'گزارش روزانهٔ تیم', desc: 'مهلت‌ها + نبض + منشن‌های خوانده‌نشدهٔ من — شروع روز با یک گزارش.', scope: 'project', run: (pid) => loadDailyReport(pid) },
-    { n: 95, title: 'آخرین فعالیت هر عضو', desc: 'تازه‌ترین فعالیت هر عضو — آخرین بار کی فعال بود؟', scope: 'none', run: () => lastActivity() },
-    { n: 99, title: 'پیشنهاد قالب برای سند تازه', desc: 'قالب‌های سند — ساخت سند از قالب فقط با یک تپ شما.', scope: 'none', run: () => listDocTemplates() }
-  ]
-
-  // --- G6 graphics: chip rail — 30 top commands in 12 groups
-  // (g6-grafik-spec.md). `existing` marks the 6 commands that already
-  // have their own section above; the other 24 are the G6 cards.
-  const AI_GROUPS = [
-    { label: 'الف — پروژه‌ها', cmds: [
-      { n: 1, title: 'وضعیت پروژه' },
-      { n: 3, title: 'مهلت پروژه' },
-      { n: 8, title: 'پیشنهاد بستن پروژه' }
-    ] },
-    { label: 'ب — اتاق‌ها و پیام‌ها', cmds: [
-      { n: 11, title: 'خلاصهٔ اتاق', existing: 'room' },
-      { n: 13, title: 'پیام‌های امروز' },
-      { n: 15, title: 'پیام‌های بی‌پاسخ' },
-      { n: 21, title: 'پیشنهاد کار از چت', existing: 'chat-sug' }
-    ] },
-    { label: 'ج — ترد، منشن، اعلان', cmds: [
-      { n: 23, title: 'تردهای باز' },
-      { n: 25, title: 'منشن‌های من' },
-      { n: 27, title: 'اعلان‌های خوانده‌نشده' }
-    ] },
-    { label: 'د — سندها', cmds: [
-      { n: 31, title: 'خلاصهٔ سند', existing: 'doc' },
-      { n: 33, title: 'سندهای بدون تغییر' },
-      { n: 36, title: 'پیشنهاد کار از سند', existing: 'doc-sug' }
-    ] },
-    { label: 'ه — نظرها و نسخه‌ها', cmds: [
-      { n: 41, title: 'نظرهای باز یک سند' },
-      { n: 45, title: 'نسخه‌های یک سند' }
-    ] },
-    { label: 'و — فایل‌ها', cmds: [
-      { n: 49, title: 'فایل‌های تازه' },
-      { n: 54, title: 'فایل‌های بی‌وصل' }
-    ] },
-    { label: 'ز — کارها و برنامه‌ریز', cmds: [
-      { n: 57, title: 'نگهبان مهلت‌ها', existing: 'guardian' },
-      { n: 58, title: 'کارهای امروز من' },
-      { n: 59, title: 'کارهای عقب‌مانده' },
-      { n: 63, title: 'کارهای بدون سررسید' },
-      { n: 64, title: 'کارهای بدون مسئول' }
-    ] },
-    { label: 'ح — یادآوری‌ها', cmds: [
-      { n: 71, title: 'یادآوری‌های امروز من' },
-      { n: 72, title: 'یادآوری‌های عقب‌مانده' }
-    ] },
-    { label: 'ط — جست‌وجو و پرس‌وجو', cmds: [
-      { n: 77, title: 'سؤال دربارهٔ فضای کاری', existing: 'ask' },
-      { n: 84, title: 'جست‌وجو در متن سندها' }
-    ] },
-    { label: 'ی — داشبورد و نبض تیم', cmds: [
-      { n: 85, title: 'نبض تیم امروز' },
-      { n: 92, title: 'گزارش روزانهٔ تیم' }
-    ] },
-    { label: 'ک — اعضا و تیم', cmds: [
-      { n: 95, title: 'آخرین فعالیت هر عضو' }
-    ] },
-    { label: 'ل — قالب‌ها و شروع سریع', cmds: [
-      { n: 99, title: 'پیشنهاد قالب برای سند تازه' }
-    ] }
-  ]
+  // ریل چیپ و کارت‌های G6 از رجیستری می‌آیند (lib/assistant-prompts.js) —
+  // نه هاردکد: هر اکشن یک‌بار در رجیستری تعریف می‌شود و چیپ/کارت از
+  // روی همان تعریف رندر می‌شود. n شمارهٔ فهرست ۱۰۰تایی است
+  // (g6-tafsil.md)؛ `existing` یعنی دستور بخش قدیمیِ خودش را دارد و
+  // چیپ به آن بخش می‌رود؛ بقیه کارت G6 را باز می‌کنند.
+  const AI_GROUPS = chipGroups()
+  const G6_COMMANDS = g6Actions().map((a) => ({
+    n: a.n,
+    title: a.title_fa,
+    desc: a.desc,
+    scope: a.scope,
+    run: (pid, docId, word) => dispatch(a.id, { projectId: pid, docId, word })
+  }))
+  // شمارش‌ها همیشه از رجیستری می‌آیند، نه هاردکد — اگر ورودی‌ای
+  // اضافه یا کم شود، نشان و سربرگ خودبه‌خود درست می‌مانند.
+  const CHIP_COUNT = AI_GROUPS.reduce((n, g) => n + g.cmds.length, 0)
+  const G6_NEW_COUNT = G6_COMMANDS.length
+  const EXISTING_COUNT = CHIP_COUNT - G6_NEW_COUNT
 
   // Active command from the chip rail: a G6 card number (100-list n,
   // null = all cards expanded) or an existing section key.
@@ -175,6 +80,32 @@
     }
   }
 
+  // --- وضعیت هوش + گفت‌وگوی باز (پکیج B) ---
+  let aiState = $state(aiStatus())
+  function refreshAiState() {
+    aiState = aiStatus()
+  }
+  const aiStatusText = $derived(
+    aiState.state === 'on'
+      ? 'هوش وصل است — خلاصه و گفت‌وگو با مدل واقعی.'
+      : aiState.state === 'off' && aiState.reason === 'not_configured'
+        ? 'هوش فعلاً وصل نیست — کلید هوش هنوز وصل نشده؛ جواب‌ها استخراجی‌اند.'
+        : aiState.state === 'off'
+          ? 'هوش فعلاً وصل نیست — تابع هوش هنوز مستقر نشده؛ جواب‌ها استخراجی‌اند.'
+          : 'هوش: هنوز امتحان نشده — نخستین خلاصه یا سؤال، وضعیتش را نشان می‌دهد.'
+  )
+
+  let chatHistory = $state([])
+  let chatInput = $state('')
+  let chatBusy = $state(false)
+  let chatError = $state('')
+  let chatNotice = $state('')
+  let chatHistoryMissing = $state(false)
+
+  // --- ثبت تپ‌دار اشاره‌گر یادآوری نگهبان (R8) ---
+  let guardianRecordBusy = $state(false)
+  let guardianRecordError = $state('')
+
   // Quick chips from the home card hand over the command number through
   // localStorage; read once on mount, then clear it.
   onMount(() => {
@@ -189,6 +120,30 @@
     } catch {
       /* storage unavailable */
     }
+    // R9: ورودی «از میوز بپرس» در خانه سؤال را با همین کلید می‌فرستد؛
+    // سؤال در گفت‌وگوی باز پیش‌پر و خودکار فرستاده می‌شود (دور ریخته
+    // نمی‌شود). سابقهٔ گفت‌وگو هم همیشه موقع ورود به پنل خوانده می‌شود.
+    loadChatHistory()
+      .then((h) => {
+        chatHistory = h
+        chatHistoryMissing = !historyAvailable()
+        try {
+          const q = window.localStorage.getItem('sclack-ai-question')
+          if (q) {
+            window.localStorage.removeItem('sclack-ai-question')
+            chatInput = q
+            activeExisting = 'chat'
+            activeG6 = null
+            scrollToEl('[data-ai-section="chat"]')
+            doSendChat(q)
+          }
+        } catch {
+          /* storage unavailable */
+        }
+      })
+      .catch(() => {
+        chatHistoryMissing = true
+      })
   })
 
   // G6 graphics: result-card type per command (g6-grafik-spec.md).
@@ -269,8 +224,9 @@
     guardianBusy = true
     guardianError = ''
     guardian = null
+    guardianRecordError = ''
     try {
-      guardian = await loadDeadlineGuardian(pid)
+      guardian = await dispatch('deadline-guardian', { projectId: pid })
     } catch (e) {
       guardianError = e.message || String(e)
     } finally {
@@ -278,25 +234,40 @@
     }
   }
 
+  // R8: ثبت اشاره‌گر یادآوری — فقط با تپ کاربر، هرگز خودکار.
+  async function doRecordGuardian() {
+    if (!guardian || guardianRecordBusy) return
+    guardianRecordBusy = true
+    guardianRecordError = ''
+    try {
+      const n = await recordOverdueReminderPointers(guardian.overdue)
+      guardian = { ...guardian, remindersRecorded: n, overdueUnrecorded: 0 }
+    } catch (e) {
+      guardianRecordError = e.message || String(e)
+    } finally {
+      guardianRecordBusy = false
+    }
+  }
+
   // --- chat-to-task suggestions (P01 D2) ---
   let chatRoomId = $state('')
   let chatSuggestions = $state(null)
-  let chatBusy = $state(false)
-  let chatError = $state('')
+  let chatSugBusy = $state(false)
+  let chatSugError = $state('')
   let createdChatKeys = $state({})
 
   async function doSuggestFromChat() {
-    if (!chatRoomId || chatBusy) return
-    chatBusy = true
-    chatError = ''
+    if (!chatRoomId || chatSugBusy) return
+    chatSugBusy = true
+    chatSugError = ''
     chatSuggestions = null
     createdChatKeys = {}
     try {
-      chatSuggestions = await suggestTasksFromChat(chatRoomId)
+      chatSuggestions = await dispatch('suggest-task-from-chat', { roomId: chatRoomId })
     } catch (e) {
-      chatError = e.message || String(e)
+      chatSugError = e.message || String(e)
     } finally {
-      chatBusy = false
+      chatSugBusy = false
     }
   }
 
@@ -312,7 +283,7 @@
       })
       createdChatKeys = { ...createdChatKeys, [key]: true }
     } catch (e) {
-      chatError = e.message || String(e)
+      chatSugError = e.message || String(e)
     }
   }
 
@@ -348,7 +319,8 @@
     roomError = ''
     roomSummary = null
     try {
-      roomSummary = await summarizeRoom(roomId)
+      roomSummary = await dispatch('summarize-room', { roomId })
+      refreshAiState()
     } catch (e) {
       roomError = e.message || String(e)
     } finally {
@@ -362,7 +334,8 @@
     docError = ''
     docSummary = null
     try {
-      docSummary = await summarizeDoc(docId)
+      docSummary = await dispatch('summarize-doc', { docId })
+      refreshAiState()
     } catch (e) {
       docError = e.message || String(e)
     } finally {
@@ -377,7 +350,7 @@
     suggestions = null
     createdQuotes = {}
     try {
-      const res = await suggestTasksFromDoc(sugDocId)
+      const res = await dispatch('suggest-task-from-doc', { docId: sugDocId })
       sugDoc = res.doc
       suggestions = res.suggestions
     } catch (e) {
@@ -408,11 +381,78 @@
     askError = ''
     askResult = null
     try {
-      askResult = await askWorkspace(q)
-    } catch (e) {
-      askError = e.message || String(e)
+      askResult = await dispatch('ask-workspace', { question: q })
+      refreshAiState()
+    } catch {
+      askError = 'مشکلی پیش آمد — دوباره تلاش کنید.'
     } finally {
       askBusy = false
+    }
+  }
+
+  // --- گفت‌وگوی باز (پکیج B) ---
+  // پیام کاربر بلافاصله روی صفحه می‌آید؛ جواب از dispatch می‌آید
+  // (هوش واقعی، وگرنه جست‌وجوی ردیف‌ها با اعلام صریح). تبادل در
+  // assistant_messages ذخیره می‌شود (بهترین‌تلاش — اگر جدول هنوز
+  // نیست، گفت‌وگو در همین نشست کار می‌کند و فقط ذخیره نمی‌شود).
+  async function doSendChat(text) {
+    const message = (text ?? chatInput).trim()
+    if (!message || chatBusy) return
+    chatBusy = true
+    chatError = ''
+    chatNotice = ''
+    chatHistory = [...chatHistory, { role: 'user', content: message }]
+    chatInput = ''
+    try {
+      const res = await dispatch('open-chat', {
+        message,
+        history: chatHistory.slice(0, -1)
+      })
+      refreshAiState()
+      let assistantMsg
+      if (res.engine === 'ai' && res.found) {
+        assistantMsg = { role: 'assistant', content: res.answer, sources: res.sources || [], hits: null }
+      } else if (res.found && res.hits) {
+        assistantMsg = {
+          role: 'assistant',
+          content: '',
+          sources: [],
+          hits: res.hits,
+          notice: res.fallbackNotice || ''
+        }
+      } else {
+        assistantMsg = {
+          role: 'assistant',
+          content: 'چیزی پیدا نشد.',
+          sources: [],
+          hits: null,
+          notice: res.fallbackNotice || ''
+        }
+      }
+      chatHistory = [...chatHistory, assistantMsg]
+      if (res.fallbackNotice) chatNotice = res.fallbackNotice
+      const saved = await saveChatExchange({
+        userText: message,
+        assistantText:
+          assistantMsg.content ||
+          (assistantMsg.hits
+            ? 'از ردیف‌های واقعی (' +
+              assistantMsg.hits.length +
+              ' مورد): ' +
+              assistantMsg.hits
+                .slice(0, 5)
+                .map((h) => h.title)
+                .join('؛ ')
+            : 'چیزی پیدا نشد.'),
+        action: 'open-chat',
+        sources: assistantMsg.sources || []
+      })
+      if (!saved && !historyAvailable()) chatHistoryMissing = true
+    } catch {
+      // خطای خام نشان داده نمی‌شود؛ پیام کوتاه و فارسی است.
+      chatError = 'مشکلی پیش آمد — دوباره تلاش کنید.'
+    } finally {
+      chatBusy = false
     }
   }
 </script>
@@ -422,7 +462,18 @@
     <div class="card-body">
       <div class="ai-head glass-mild">
         <h1 class="ai-title text-2xl font-bold">دستیار میوز</h1>
-        <span class="ai-badge">۳۰ دستور</span>
+        <span class="ai-badge">{faNum(CHIP_COUNT)} دستور</span>
+        <button
+          type="button"
+          class="ai-simple-btn"
+          onclick={() => {
+            activeExisting = 'chat'
+            activeG6 = null
+            scrollToEl('[data-ai-section="chat"]')
+          }}
+        >
+          گفت‌وگو با میوز
+        </button>
         <button
           type="button"
           class="ai-simple-btn"
@@ -433,9 +484,11 @@
         </button>
       </div>
       <p class="mt-1 text-sm opacity-70">
-        فقط استخراجی است: خلاصه و پیشنهاد فقط از متن واقعی پیام‌ها و سندها گرفته می‌شود؛
-        هیچ جمله‌ای ساخته نمی‌شود و چیزی که نیست، «پیدا نشد» گفته می‌شود.
+        خلاصه و گفت‌وگو با هوش واقعی‌اند؛ وقتی هوش در دسترس نیست، همان
+        استخراجیِ همیشگی جایگزین می‌شود. هیچ جمله‌ای ساخته نمی‌شود و
+        چیزی که نیست، «پیدا نشد» گفته می‌شود.
       </p>
+      <p class="mt-1 text-xs opacity-60" data-ai-status>{aiStatusText}</p>
 
       {#snippet aiSkeleton()}
         <div class="ai-skeleton mt-3" role="status">
@@ -449,7 +502,7 @@
         </div>
       {/snippet}
 
-      <!-- ریل چیپ‌ها — ۳۰ دستور برتر در ۱۲ گروه (G6 graphics) -->
+      <!-- ریل چیپ‌ها — دستورهای برتر در گروه‌ها، از رجیستری (G6 graphics) -->
       <nav class="ai-chips" aria-label="دستورهای دستیار">
         {#each AI_GROUPS as g}
           <div class="ai-chip-group">
@@ -481,8 +534,9 @@
         <h2 class="ai-title mb-2 text-lg font-bold">نگهبان مهلت‌ها</h2>
         <p class="mb-2 text-xs opacity-60">
           خلاصهٔ روزانه از روی کارهای واقعی پروژه: کارهای امروز، عقب‌مانده و
-          سررسیدهای ۴۸ ساعت آینده. برای کارهای عقب‌مانده یک اعلان یادآوری
-          (فقط اشاره‌گر، بدون متن) ثبت می‌شود.
+          سررسیدهای ۴۸ ساعت آینده. برای کارهای عقب‌مانده می‌توانید با یک تپ
+          یک اعلان یادآوری (فقط اشاره‌گر، بدون متن) ثبت کنید — خودکار
+          ثبت نمی‌شود.
         </p>
         <div class="flex gap-2">
           <select
@@ -565,11 +619,30 @@
               </div>
             {/if}
             {#if guardian.overdue.length > 0}
-              <p class="mt-2 text-xs opacity-60">
-                اعلان یادآوری ثبت‌شده: {guardian.remindersRecorded} مورد تازه{guardian.remindersRecorded === 0
-                  ? ' — اعلان این کارها قبلاً ثبت شده بود.'
-                  : ''}
-              </p>
+              {#if guardian.overdueUnrecorded > 0}
+                <p class="mt-2 text-xs opacity-60">
+                  برای {guardian.overdueUnrecorded} کار عقب‌مانده هنوز یادآوری ثبت نشده — با این
+                  تپ، برای هر کدام یک اعلان (فقط اشاره‌گر، بدون متن) ثبت می‌شود.
+                </p>
+                <button
+                  type="button"
+                  class="btn btn-ai btn-sm mt-2"
+                  data-guardian-record
+                  onclick={doRecordGuardian}
+                  disabled={guardianRecordBusy}
+                >
+                  ثبت یادآوری برای کارهای عقب‌مانده
+                </button>
+                {#if guardianRecordError}
+                  <p class="mt-1 text-xs text-error">{guardianRecordError}</p>
+                {/if}
+              {:else if guardian.remindersRecorded > 0}
+                <p class="mt-2 text-xs opacity-60">
+                  اعلان یادآوری ثبت شد: {guardian.remindersRecorded} مورد تازه.
+                </p>
+              {:else}
+                <p class="mt-2 text-xs opacity-60">اعلان این کارها قبلاً ثبت شده بود.</p>
+              {/if}
             {/if}
             </div>
           {/if}
@@ -605,28 +678,57 @@
           </div>
         {/if}
         {#if roomSummary}
-          <div class="ai-result mt-3 rounded-xl bg-base-100 p-3 text-sm" aria-live="polite">
-            <p>{roomSummary.count} پیام</p>
-            {#each roomSummary.authors as a}
-              <p>{a.name}: {a.count} پیام</p>
-            {/each}
-            {#if roomSummary.keyLines.length === 0}
-              <p class="ai-result-empty ai-enter mt-2 opacity-60">جملهٔ قابل‌نقل‌قولی نیست.</p>
-            {:else}
-              <p class="mt-2 font-bold">جمله‌های عیناً نقل‌شده:</p>
-              <ul class="ai-result-list mt-1 flex flex-col gap-1">
-                {#each roomSummary.keyLines as l, i}
-                  <li
-                    class="ai-result-row ai-result-quote ai-enter ps-2"
-                    style="animation-delay:{Math.min(i, 5) * 30}ms"
-                  >
-                    «{l.text}»
-                    <span class="block text-xs opacity-60">{l.author}</span>
-                  </li>
-                {/each}
-              </ul>
-            {/if}
-          </div>
+          {#if roomSummary.engine === 'ai'}
+            <div class="ai-result mt-3 rounded-xl bg-base-100 p-3 text-sm" aria-live="polite">
+              <p class="text-xs opacity-60">خلاصهٔ واقعی — با ذکر منبع</p>
+              {#if !roomSummary.found}
+                <p class="ai-result-empty ai-enter mt-2 opacity-60">چیزی پیدا نشد.</p>
+              {:else}
+                <ul class="ai-result-list mt-2 flex flex-col gap-1">
+                  {#each roomSummary.points as p, i}
+                    <li
+                      class="ai-result-row ai-enter ps-2"
+                      style="animation-delay:{Math.min(i, 5) * 30}ms"
+                    >
+                      {p.text}
+                      <a href="#/room/{roomId}" class="block text-xs opacity-60 hover:underline">
+                        منبع: {p.source_ids.length} پیام در اتاق
+                      </a>
+                    </li>
+                  {/each}
+                </ul>
+              {/if}
+            </div>
+          {:else}
+            <div class="ai-result mt-3 rounded-xl bg-base-100 p-3 text-sm" aria-live="polite">
+              <p class="text-xs opacity-60">
+                خط‌های برگزیده — از متن واقعی پیام‌ها، بدون خلاصه‌سازی
+              </p>
+              <p>{roomSummary.count} پیام</p>
+              {#each roomSummary.authors as a}
+                <p>{a.name}: {a.count} پیام</p>
+              {/each}
+              {#if roomSummary.keyLines.length === 0}
+                <p class="ai-result-empty ai-enter mt-2 opacity-60">جملهٔ قابل‌نقل‌قولی نیست.</p>
+              {:else}
+                <p class="mt-2 font-bold">خط‌های برگزیده (عیناً):</p>
+                <ul class="ai-result-list mt-1 flex flex-col gap-1">
+                  {#each roomSummary.keyLines as l, i}
+                    <li
+                      class="ai-result-row ai-result-quote ai-enter ps-2"
+                      style="animation-delay:{Math.min(i, 5) * 30}ms"
+                    >
+                      «{l.text}»
+                      <span class="block text-xs opacity-60">{l.author}</span>
+                    </li>
+                  {/each}
+                </ul>
+              {/if}
+              {#if roomSummary.fallbackNotice}
+                <p class="mt-2 text-xs opacity-60">{roomSummary.fallbackNotice}</p>
+              {/if}
+            </div>
+          {/if}
         {/if}
       </section>
 
@@ -659,28 +761,62 @@
           </div>
         {/if}
         {#if docSummary}
-          <div class="ai-result mt-3 rounded-xl bg-base-100 p-3 text-sm" aria-live="polite">
-            <p>{docSummary.chars} نویسه · {docSummary.paragraphs} پاراگراف</p>
-            {#if docSummary.firstParagraph}
-              <p class="mt-2 font-bold">پاراگراف اول (عیناً):</p>
-              <p class="ai-result-quote ai-enter whitespace-pre-wrap ps-2">
-                {docSummary.firstParagraph}
+          {#if docSummary.engine === 'ai'}
+            <div class="ai-result mt-3 rounded-xl bg-base-100 p-3 text-sm" aria-live="polite">
+              <p class="text-xs opacity-60">خلاصهٔ واقعی — با ذکر منبع</p>
+              {#if !docSummary.found}
+                <p class="ai-result-empty ai-enter mt-2 opacity-60">چیزی پیدا نشد.</p>
+              {:else}
+                <ul class="ai-result-list mt-2 flex flex-col gap-1">
+                  {#each docSummary.points as p, i}
+                    <li
+                      class="ai-result-row ai-enter ps-2"
+                      style="animation-delay:{Math.min(i, 5) * 30}ms"
+                    >
+                      {p.text}
+                      {#if p.paragraph}
+                        <a
+                          href="#/doc/{docId}"
+                          class="block text-xs opacity-60 hover:underline"
+                        >
+                          منبع: پاراگراف {p.paragraph}
+                        </a>
+                      {/if}
+                    </li>
+                  {/each}
+                </ul>
+              {/if}
+            </div>
+          {:else}
+            <div class="ai-result mt-3 rounded-xl bg-base-100 p-3 text-sm" aria-live="polite">
+              <p class="text-xs opacity-60">
+                خط‌های برگزیده — از متن واقعی سند، بدون خلاصه‌سازی
               </p>
-            {/if}
-            {#if docSummary.keyLines.length > 0}
-              <p class="mt-2 font-bold">خط‌های کلیدی (عیناً):</p>
-              <ul class="ai-result-list mt-1 flex flex-col gap-1">
-                {#each docSummary.keyLines as l, i}
-                  <li
-                    class="ai-result-row ai-result-quote ai-enter ps-2"
-                    style="animation-delay:{Math.min(i, 5) * 30}ms"
-                  >
-                    «{l}»
-                  </li>
-                {/each}
-              </ul>
-            {/if}
-          </div>
+              <p>{docSummary.chars} نویسه · {docSummary.paragraphs} پاراگراف</p>
+              {#if docSummary.firstParagraph}
+                <p class="mt-2 font-bold">پاراگراف اول (عیناً):</p>
+                <p class="ai-result-quote ai-enter whitespace-pre-wrap ps-2">
+                  {docSummary.firstParagraph}
+                </p>
+              {/if}
+              {#if docSummary.keyLines.length > 0}
+                <p class="mt-2 font-bold">خط‌های برگزیده (عیناً):</p>
+                <ul class="ai-result-list mt-1 flex flex-col gap-1">
+                  {#each docSummary.keyLines as l, i}
+                    <li
+                      class="ai-result-row ai-result-quote ai-enter ps-2"
+                      style="animation-delay:{Math.min(i, 5) * 30}ms"
+                    >
+                      «{l}»
+                    </li>
+                  {/each}
+                </ul>
+              {/if}
+              {#if docSummary.fallbackNotice}
+                <p class="mt-2 text-xs opacity-60">{docSummary.fallbackNotice}</p>
+              {/if}
+            </div>
+          {/if}
         {/if}
       </section>
 
@@ -730,8 +866,8 @@
                 >
                   <p>«{s.quote}»</p>
                   <p class="mt-1 text-xs opacity-60">
-                    مسئول پیشنهادی: {s.assigneeId ? memberName(s.assigneeId) : '—'} ·
-                    سررسید پیشنهادی: {fmtDue(s.dueAt)}
+                    مسئول پیش‌فرض: {s.assigneeId ? memberName(s.assigneeId) : '—'} ·
+                    سررسید پیش‌فرض: {fmtDue(s.dueAt)}
                   </p>
                   <p class="mt-1 text-xs opacity-60">پیشنهاد — هنوز ساخته نشده</p>
                   <button
@@ -757,8 +893,9 @@
         <h2 class="ai-title mb-2 text-lg font-bold">تبدیل چت به کار</h2>
         <p class="mb-2 text-xs opacity-60">
           از پیام‌های اتاق: هر خطِ کاری با نقل عین جمله پیشنهاد می‌شود؛
-          مسئول پیشنهادی نویسندهٔ پیام است و سررسید پیشنهادی شفاف است
-          (فردا / امروز / پس‌فردا). ساخت فقط با یک تپ شما انجام می‌شود.
+          مسئول و سررسید پیش‌فرض‌اند (نویسندهٔ پیام / پس‌فردا، مگر
+          «فردا»/«امروز» در جمله باشد) — موقع ساخت می‌توانید عوضشان
+          کنید. ساخت فقط با یک تپ شما انجام می‌شود.
         </p>
         <div class="flex gap-2">
           <select
@@ -770,16 +907,16 @@
               <option value={r.id}>{r.name}</option>
             {/each}
           </select>
-          <button class="btn btn-ai" onclick={doSuggestFromChat} disabled={chatBusy || !chatRoomId}>
+          <button class="btn btn-ai" onclick={doSuggestFromChat} disabled={chatSugBusy || !chatRoomId}>
             پیشنهاد از چت
           </button>
         </div>
-        {#if chatBusy}
+        {#if chatSugBusy}
           {@render aiSkeleton()}
         {/if}
-        {#if chatError}
+        {#if chatSugError}
           <div class="ai-result ai-result-error mt-2">
-            <p class="text-xs text-error">{chatError}</p>
+            <p class="text-xs text-error">{chatSugError}</p>
             <button type="button" class="btn btn-ai btn-sm mt-2" onclick={doSuggestFromChat}>
               دوباره تلاش کن
             </button>
@@ -800,8 +937,8 @@
                 >
                   <p>«{s.quote}»</p>
                   <p class="mt-1 text-xs opacity-60">
-                    مسئول پیشنهادی: {s.assigneeId ? memberName(s.assigneeId) : '—'} ·
-                    سررسید پیشنهادی: {fmtDue(s.dueAt)}
+                    مسئول پیش‌فرض: {s.assigneeId ? memberName(s.assigneeId) : '—'} ·
+                    سررسید پیش‌فرض: {fmtDue(s.dueAt)}
                   </p>
                   <p class="mt-1 text-xs opacity-60">پیشنهاد — هنوز ساخته نشده</p>
                   <button
@@ -851,7 +988,33 @@
           </div>
         {/if}
         {#if askResult}
-          {#if !askResult.found}
+          {#if askResult.fallbackNotice}
+            <p class="mt-2 text-xs opacity-60">{askResult.fallbackNotice}</p>
+          {/if}
+          {#if askResult.engine === 'ai'}
+            {#if !askResult.found}
+              <p class="ai-result ai-result-empty ai-enter mt-3 text-sm opacity-60">چیزی پیدا نشد.</p>
+            {:else}
+              <div class="ai-result mt-3 rounded-xl bg-base-100 p-3 text-sm" aria-live="polite">
+                <p class="text-xs opacity-60">جواب واقعی — با ذکر منبع</p>
+                <p class="mt-1 whitespace-pre-wrap">{askResult.answer}</p>
+                {#if askResult.sources.length > 0}
+                  <p class="mt-2 text-xs opacity-60">منبع:</p>
+                  <ul class="mt-1 flex flex-col gap-1">
+                    {#each askResult.sources as s, i (s.table + '-' + s.id)}
+                      <li>
+                        <a href={s.link} class="block text-sm hover:underline">
+                          <span class="font-bold">{s.kindLabel}</span>
+                          <span class="opacity-60"> · {s.place}</span>
+                          <span class="block truncate opacity-90">{s.title}</span>
+                        </a>
+                      </li>
+                    {/each}
+                  </ul>
+                {/if}
+              </div>
+            {/if}
+          {:else if !askResult.found}
             <p class="ai-result ai-result-empty ai-enter mt-3 text-sm opacity-60">چیزی پیدا نشد.</p>
           {:else}
             <ul class="ai-result ai-result-list mt-3 flex flex-col gap-1" aria-live="polite">
@@ -872,11 +1035,115 @@
         {/if}
       </section>
 
-      <!-- G6: 24 new commands (top 30) -->
+      <!-- گفت‌وگوی باز (پکیج B) — ورودی خانه هم به اینجا می‌رسد (R9) -->
+      <section
+        class="mt-6 {activeExisting === 'chat' ? 'ai-active' : ''}"
+        data-ai-section="chat"
+      >
+        <h2 class="ai-title mb-2 text-lg font-bold">گفت‌وگو با میوز</h2>
+        <p class="mb-2 text-xs opacity-60">
+          سؤال آزاد بپرسید — فقط از ردیف‌های واقعی و سابقهٔ همین گفت‌وگو
+          جواب داده می‌شود؛ اگر جواب در آن‌ها نیست، «پیدا نشد» گفته
+          می‌شود. میوز هیچ کاری را خودبه‌خود نمی‌سازد، نمی‌بندد و نمی‌فرستد.
+        </p>
+        {#if chatHistoryMissing}
+          <p class="mb-2 text-xs opacity-60" data-chat-history-note>
+            سابقهٔ گفت‌وگو هنوز وصل نشده — جدول assistant_messages در راه
+            است؛ گفت‌وگو در همین نشست کار می‌کند و فقط ذخیره نمی‌شود.
+          </p>
+        {/if}
+        {#if chatHistory.length > 0}
+          <ul
+            class="ai-result ai-result-list mt-3 flex flex-col gap-2"
+            data-chat-history
+            aria-live="polite"
+          >
+            {#each chatHistory as m, i (i)}
+              <li
+                class="ai-result-row rounded-xl bg-base-100 p-3 text-sm {m.role === 'user'
+                  ? 'ai-chat-user'
+                  : ''}"
+                data-chat-msg={m.role}
+              >
+                <p class="text-xs opacity-60">{m.role === 'user' ? 'شما' : 'میوز'}</p>
+                {#if m.content}
+                  <p class="mt-1 whitespace-pre-wrap">{m.content}</p>
+                {/if}
+                {#if m.sources && m.sources.length > 0}
+                  <p class="mt-2 text-xs opacity-60">منبع:</p>
+                  <ul class="mt-1 flex flex-col gap-1">
+                    {#each m.sources as s, j (s.table + '-' + s.id + '-' + j)}
+                      <li>
+                        <a href={s.link} class="block text-sm hover:underline">
+                          <span class="font-bold">{s.kindLabel}</span>
+                          <span class="opacity-60"> · {s.place}</span>
+                          <span class="block truncate opacity-90">{s.title}</span>
+                        </a>
+                      </li>
+                    {/each}
+                  </ul>
+                {/if}
+                {#if m.hits}
+                  <p class="mt-1 text-xs opacity-60">از ردیف‌های واقعی:</p>
+                  <ul class="mt-1 flex flex-col gap-1">
+                    {#each m.hits as h, j (h.kind + '-' + h.id + '-' + j)}
+                      <li>
+                        <a href={h.link} class="block text-sm hover:underline">
+                          <span class="font-bold">{h.kindLabel}</span>
+                          <span class="opacity-60"> · {h.place}</span>
+                          <span class="block truncate opacity-90">{h.title}</span>
+                        </a>
+                      </li>
+                    {/each}
+                  </ul>
+                {/if}
+                {#if m.notice}
+                  <p class="mt-1 text-xs opacity-60">{m.notice}</p>
+                {/if}
+              </li>
+            {/each}
+          </ul>
+        {/if}
+        <div class="mt-3 flex gap-2">
+          <input
+            class="input input-bordered input-sclack min-w-0 flex-1 bg-base-100"
+            data-chat-input
+            placeholder="مثلاً: جلسهٔ هفتهٔ پیش چه شد؟"
+            bind:value={chatInput}
+            onkeydown={(e) => {
+              if (e.key === 'Enter') doSendChat()
+            }}
+          />
+          <button
+            class="btn btn-ai"
+            data-chat-send
+            onclick={() => doSendChat()}
+            disabled={chatBusy || !chatInput.trim()}
+          >
+            بفرست
+          </button>
+        </div>
+        {#if chatBusy}
+          {@render aiSkeleton()}
+        {/if}
+        {#if chatNotice}
+          <p class="mt-2 text-xs opacity-60" data-chat-notice>{chatNotice}</p>
+        {/if}
+        {#if chatError}
+          <div class="ai-result ai-result-error mt-2">
+            <p class="text-xs text-error">{chatError}</p>
+            <button type="button" class="btn btn-ai btn-sm mt-2" onclick={() => doSendChat()}>
+              دوباره تلاش کن
+            </button>
+          </div>
+        {/if}
+      </section>
+
+      <!-- G6: new commands (the rest of the top list) -->
       <section class="mt-6" data-g6-area>
         <h2 class="ai-title mb-2 text-lg font-bold">دستورهای تازهٔ دستیار (G6)</h2>
         <p class="mb-2 text-xs opacity-60">
-          ۲۴ دستور تازه از ۳۰ دستور برتر؛ ۶ دستور دیگر (خلاصهٔ اتاق، تبدیل چت به کار،
+          {faNum(G6_NEW_COUNT)} دستور تازه از {faNum(CHIP_COUNT)} دستور برتر؛ {faNum(EXISTING_COUNT)} دستور دیگر (خلاصهٔ اتاق، تبدیل چت به کار،
           خلاصهٔ سند، پیشنهاد کار از سند، نگهبان مهلت‌ها، سؤال دربارهٔ فضای کاری)
           همین بالا در پنل هستند. همه فقط از ردیف‌های واقعی نقل یا شمارش می‌کنند؛
           وقتی چیزی نیست، «پیدا نشد» می‌گویند و هیچ‌چیز خودبه‌خود ساخته نمی‌شود.

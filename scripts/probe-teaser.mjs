@@ -62,7 +62,7 @@ function check(name, cond, extra) {
   const teaserSrc = readFileSync(new URL('../src/components/IntroTeaser.svelte', import.meta.url), 'utf8')
   const loginSrc = readFileSync(new URL('../src/components/Login.svelte', import.meta.url), 'utf8')
   const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
-  check('static: version is 0.17.0', pkg.version === '0.17.0', 'version ' + pkg.version)
+  check('static: version is 0.18.0', pkg.version === '0.18.0', 'version ' + pkg.version)
   check('static: IntroTeaser exists with data-teaser + data-beat + data-act',
     teaserSrc.includes('data-teaser') && teaserSrc.includes('data-beat') && teaserSrc.includes('data-act'))
   check('static: all 19 stations present (data-station 1..19)',

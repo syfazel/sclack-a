@@ -211,7 +211,18 @@
     await loadTeamPulseData()
   }
 
+  // R9: سؤال خانه دور ریخته نمی‌شود — با همان سازوکار localStorage
+  // چیپ‌ها به گفت‌وگوی باز در پنل دستیار می‌رود و خودکار فرستاده می‌شود.
   function askAssistant() {
+    const q = assistantQuery.trim()
+    if (q) {
+      try {
+        window.localStorage.setItem('sclack-ai-question', q)
+      } catch {
+        /* storage unavailable */
+      }
+      assistantQuery = ''
+    }
     location.hash = '#/assistant'
   }
 

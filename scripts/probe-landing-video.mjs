@@ -52,7 +52,7 @@ function check(name, cond, extra) {
   const loginSrc = readFileSync(new URL('../src/components/Login.svelte', import.meta.url), 'utf8')
   const teaserSrc = readFileSync(new URL('../src/components/IntroTeaser.svelte', import.meta.url), 'utf8')
   const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
-  check('static: version is 0.17.0', pkg.version === '0.17.0', 'version ' + pkg.version)
+  check('static: version is 0.18.0', pkg.version === '0.18.0', 'version ' + pkg.version)
   check('static: shared video band in Login (data-landing-video + clip-a-light.mp4 + BASE_URL)',
     loginSrc.includes('data-landing-video') && loginSrc.includes('clip-a-light.mp4') &&
     loginSrc.includes('import.meta.env.BASE_URL'))
