@@ -3,6 +3,7 @@
   import { auth, ws, chat, notif, pulse } from '../lib/store.svelte.js'
   import {
     createProject,
+    updateProject,
     closeProject,
     deleteProject,
     loadProjectData,
@@ -14,6 +15,7 @@
   import {
     PROJECT_STAGE_LABEL,
     endOfTehranDay,
+    tehranDayKey,
     plannerMenuTasks,
     isOverdueTask,
     TASK_STATUS_LABEL,
@@ -51,6 +53,91 @@
   // clear error under the projects list instead of deleting anything.
   let armDeleteProjectId = $state(null)
   let deleteError = $state('')
+
+  // Phase 2 — project edit in place (plan gap 7): the form lives
+  // under the project card in the «پروژه‌ها» section — that card is
+  // where the project's goal / final output / deadline are shown
+  // (ProjectReview only renders counts). Members and stage are NOT
+  // edited here: updateProject merges custom_fields and keeps them.
+  // A rename needs a second tap on save (armRenameName tracks the
+  // exact name that was armed, so retyping a different name re-arms).
+  let editingProjectId = $state(null)
+  let editProjName = $state('')
+  let editProjDesc = $state('')
+  let editProjGoal = $state('')
+  let editProjFinal = $state('')
+  let editProjDeadline = $state('') // Tehran day key for the date input
+  let editProjError = $state('')
+  let editProjBusy = $state(false)
+  let editProjSavedId = $state(null)
+  let armRenameProjectId = $state(null)
+  let armRenameName = $state(null)
+
+  function openProjectEdit(p) {
+    // Toggling the same card closes its form without saving.
+    if (editingProjectId === p.id) {
+      editingProjectId = null
+      editProjError = ''
+      armRenameProjectId = null
+      armRenameName = null
+      return
+    }
+    editingProjectId = p.id
+    editProjName = p.name || ''
+    editProjDesc = p.description || ''
+    const cf = p.custom_fields || {}
+    editProjGoal = cf.goal || ''
+    editProjFinal = cf.final_output || ''
+    editProjDeadline = cf.deadline ? tehranDayKey(cf.deadline) : ''
+    editProjError = ''
+    armRenameProjectId = null
+    armRenameName = null
+  }
+
+  function cancelProjectEdit() {
+    editingProjectId = null
+    editProjError = ''
+    armRenameProjectId = null
+    armRenameName = null
+  }
+
+  async function doSaveProjectEdit() {
+    if (editProjBusy || !editingProjectId) return
+    const p = ws.projects.find((x) => x.id === editingProjectId)
+    if (!p) return
+    const cleanName = (editProjName || '').trim()
+    if (
+      cleanName !== (p.name || '').trim() &&
+      (armRenameProjectId !== p.id || armRenameName !== cleanName)
+    ) {
+      armRenameProjectId = p.id
+      armRenameName = cleanName
+      editProjError = 'نام پروژه عوض می‌شود — برای تأیید، دوباره «ذخیرهٔ تغییرات» را بزنید.'
+      return
+    }
+    editProjBusy = true
+    editProjError = ''
+    try {
+      await updateProject(p, {
+        name: editProjName,
+        description: editProjDesc,
+        goal: editProjGoal,
+        finalOutput: editProjFinal,
+        deadline: editProjDeadline ? endOfTehranDay(editProjDeadline) : ''
+      })
+      editProjSavedId = p.id
+      editingProjectId = null
+      armRenameProjectId = null
+      armRenameName = null
+      setTimeout(() => {
+        editProjSavedId = null
+      }, 700)
+    } catch (e) {
+      editProjError = e.message || String(e)
+    } finally {
+      editProjBusy = false
+    }
+  }
 
   async function doDeleteProject(p) {
     if (armDeleteProjectId !== p.id) {
@@ -745,7 +832,11 @@
       <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {#each ws.projects as p (p.id)}
           <!-- G5 — کارت پروژه: شیشهٔ کم‌عمق + انیمیشن ورود (فقط transform/opacity) -->
-          <div class="card glass-card anim-enter shadow-sm transition hover:shadow-md">
+          <div
+            class="card glass-card anim-enter shadow-sm transition hover:shadow-md {editingProjectId === p.id
+              ? 'project-editing'
+              : ''} {editProjSavedId === p.id ? 'project-saved-flash' : ''}"
+          >
             <div class="card-body gap-1">
               <button class="text-start" onclick={() => openProject(p)}>
                 <h3 class="card-title text-base">{p.name}</h3>
@@ -769,6 +860,14 @@
                 <p class="text-sm"><span class="opacity-60">مرحله: </span>{stageLabel(p)}</p>
               </button>
               <div class="mt-2 flex flex-wrap justify-end gap-2">
+                <button
+                  class="btn btn-ghost btn-sm project-edit-btn"
+                  aria-label="ویرایش پروژهٔ {p.name}"
+                  onclick={() => openProjectEdit(p)}
+                  disabled={closingId === p.id}
+                >
+                  ویرایش پروژه
+                </button>
                 {#if auth.member && p.created_by === auth.member.id}
                   <button
                     class="btn btn-ghost btn-sm {armDeleteProjectId === p.id ? 'btn-error' : 'text-error'}"
@@ -793,6 +892,62 @@
                   با تپ دوم، همهٔ اتاق‌ها، پیام‌ها، سندها، فایل‌ها و کارهای پروژه پاک می‌شوند و
                   برنمی‌گردند.
                 </p>
+              {/if}
+              {#if editingProjectId === p.id}
+                <!-- Phase 2 — edit form under the card, prefilled; save → updateProject -->
+                <div class="project-edit-form mt-2 flex flex-col gap-2 border-t pt-2" data-edit-form={p.id}>
+                  <input
+                    class="input input-bordered input-sclack w-full bg-base-100"
+                    placeholder="نام پروژه *"
+                    bind:value={editProjName}
+                    disabled={editProjBusy}
+                  />
+                  <textarea
+                    class="textarea textarea-bordered input-sclack w-full bg-base-100"
+                    placeholder="توضیح (اختیاری)"
+                    bind:value={editProjDesc}
+                    disabled={editProjBusy}
+                  ></textarea>
+                  <input
+                    class="input input-bordered input-sclack w-full bg-base-100"
+                    placeholder="هدف پروژه *"
+                    bind:value={editProjGoal}
+                    disabled={editProjBusy}
+                  />
+                  <input
+                    class="input input-bordered input-sclack w-full bg-base-100"
+                    placeholder="خروجی نهایی"
+                    bind:value={editProjFinal}
+                    disabled={editProjBusy}
+                  />
+                  <label class="form-control w-full">
+                    <span class="label-text mb-1">مهلت *</span>
+                    <input
+                      type="date"
+                      class="input input-bordered input-sclack w-full bg-base-100"
+                      bind:value={editProjDeadline}
+                      disabled={editProjBusy}
+                    />
+                  </label>
+                  {#if editProjError}
+                    <p class="text-xs text-error">{editProjError}</p>
+                  {/if}
+                  <div class="flex gap-2">
+                    <button
+                      class="btn btn-sclack btn-primary flex-1"
+                      onclick={doSaveProjectEdit}
+                      disabled={editProjBusy}
+                    >
+                      ذخیرهٔ تغییرات
+                    </button>
+                    <button class="btn btn-ghost" onclick={cancelProjectEdit} disabled={editProjBusy}>
+                      انصراف
+                    </button>
+                  </div>
+                  <p class="text-xs opacity-60">
+                    مرحله و اعضا با ویرایش عوض نمی‌شوند؛ بستن و حذف پروژه دست نمی‌خورند.
+                  </p>
+                </div>
               {/if}
             </div>
           </div>

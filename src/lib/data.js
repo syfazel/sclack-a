@@ -155,6 +155,58 @@ export async function closeProject(project) {
   return data
 }
 
+// Phase 2 (فاز ۲ پلن کمبودها): edit an existing project in place —
+// name, description, goal, final_output, deadline. custom_fields is
+// merged so stage, member_ids and closed_at survive an edit; archived
+// is never touched here (close/delete own it). Same
+// validateProjectForm as createProject (name, goal and deadline are
+// required). A rename is checked for uniqueness BEFORE writing (the
+// name is unique in the schema) — the UI also asks a second tap to
+// confirm a rename, so a mistyped name cannot slip through on one tap.
+export async function updateProject(project, { name, description, goal, finalOutput, deadline }) {
+  if (!project?.id) throw new Error('پروژه مشخص نیست.')
+  const bad = validateProjectForm({ name, goal, deadline })
+  if (bad) throw new Error(bad)
+  if (!auth.member) throw new Error('ردیف عضو هنوز ساخته نشده است.')
+  const clean = (name || '').trim()
+  if (clean !== (project.name || '').trim()) {
+    const { data: clash, error: cerr } = await sb
+      .from('projects')
+      .select('id')
+      .eq('name', clean)
+      .neq('id', project.id)
+    if (cerr) throw cerr
+    if (clash && clash.length > 0) {
+      throw new Error('پروژه‌ای با این نام هست؛ نام دیگری انتخاب کنید.')
+    }
+  }
+  const cf = {
+    ...(project.custom_fields || {}),
+    goal: (goal || '').trim(),
+    final_output: (finalOutput || '').trim() || null,
+    deadline: (deadline || '').trim()
+  }
+  const { data, error } = await sb
+    .from('projects')
+    .update({
+      name: clean,
+      description: (description || '').trim() || null,
+      custom_fields: cf
+    })
+    .eq('id', project.id)
+    .select()
+    .single()
+  if (error) {
+    // Unique name (projects.name is unique in the schema).
+    if (error.code === '23505' || /duplicate key/i.test(error.message || '')) {
+      throw new Error('پروژه‌ای با این نام هست؛ نام دیگری انتخاب کنید.')
+    }
+    throw error
+  }
+  await loadWorkspace()
+  return data
+}
+
 export function memberName(memberId) {
   const m = ws.members.find((x) => x.id === memberId)
   return m ? m.name : 'عضو'

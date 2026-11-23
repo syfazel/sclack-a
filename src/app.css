@@ -239,6 +239,23 @@ html.simple-mode .anim-enter {
   animation: none;
 }
 
+/* ===== فاز ۲ پلن کمبودها — ویرایش پروژه =====
+   همان زبان فاز ۱؛ حرکت فقط transform/opacity. */
+.project-edit-btn:hover {
+  border-color: var(--amber-dark);
+}
+.project-editing {
+  outline: 2px solid var(--amber);
+  outline-offset: 2px;
+  border-radius: 16px;
+}
+.project-edit-form {
+  animation: task-edit-open 180ms ease-out both;
+}
+.project-saved-flash {
+  animation: task-saved-flash 300ms ease-out 1;
+}
+
 /* ===== فاز ۱ پلن کمبودها — ویرایش کار + فهرست‌کشویی سند =====
    حرکت فقط transform/opacity؛ backdrop-filter هرگز انیمیت نمی‌شود. */
 .task-edit-btn:hover {
@@ -312,12 +329,16 @@ html.simple-mode .anim-enter {
 
 /* کاهش حرکت + «حالت ساده» — همهٔ حرکت‌های فاز ۱ ساکن */
 @media (prefers-reduced-motion: reduce) {
+  .project-edit-form,
+  .project-saved-flash,
   .task-edit-form,
   .task-saved-flash,
   .doc-picker-menu {
     animation: none;
   }
 }
+html.simple-mode .project-edit-form,
+html.simple-mode .project-saved-flash,
 html.simple-mode .task-edit-form,
 html.simple-mode .task-saved-flash,
 html.simple-mode .doc-picker-menu {
