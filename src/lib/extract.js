@@ -435,6 +435,40 @@ export function jalaliDayLabel(date) {
   return jalaliDayLabelFmt.format(toDate(date))
 }
 
+// ---------- H3: today timeline (pure) ----------
+// HH:MM in Tehran for a Date/ISO (timeline time label).
+const tehranTimeFmt = new Intl.DateTimeFormat('fa-IR', {
+  timeZone: TEHRAN_TZ, hour: '2-digit', minute: '2-digit', hour12: false
+})
+
+export function tehranTimeLabel(date) {
+  return tehranTimeFmt.format(toDate(date))
+}
+
+// Today's timeline: unfinished tasks due today or overdue (mine only
+// when meId is given) + undone reminders due today or overdue, ordered
+// by time, max 5. Pure: takes an explicit `now` so the probe can pin
+// the clock. Tasks use due_at; reminders use remind_at + text.
+export function buildTodayTimeline({ tasks = [], reminders = [] }, now, { meId } = {}) {
+  const todayKey = tehranDayKey(now)
+  const items = []
+  for (const t of tasks || []) {
+    if (!t || t.status === 'done' || !t.due_at) continue
+    if (meId && t.assignee_id !== meId) continue
+    const key = tehranDayKey(t.due_at)
+    if (key > todayKey) continue
+    items.push({ kind: 'task', id: t.id, title: t.title, dueAt: t.due_at, overdue: key < todayKey })
+  }
+  for (const r of reminders || []) {
+    if (!r || r.done || !r.remind_at) continue
+    const key = tehranDayKey(r.remind_at)
+    if (key > todayKey) continue
+    items.push({ kind: 'reminder', id: r.id, title: r.text, dueAt: r.remind_at, overdue: key < todayKey })
+  }
+  items.sort((a, b) => new Date(a.dueAt) - new Date(b.dueAt))
+  return items.slice(0, 5)
+}
+
 // End of a Tehran calendar day as ISO: a date picked in a
 // <input type="date"> means that Tehran day, not the browser's local
 // day — `new Date(key + 'T23:59:00')` parses in the browser's timezone,

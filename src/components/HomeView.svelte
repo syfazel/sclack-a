@@ -8,6 +8,7 @@
     deleteProject,
     loadProjectData,
     loadTeamPulseData,
+    loadRecentRooms,
     memberName
   } from '../lib/data.js'
   import { loadNotifications } from '../lib/notifications.js'
@@ -29,7 +30,9 @@
     computePulseChart,
     buildRecentActivity,
     computeProjectReview,
-    pickProgressProjectId
+    pickProgressProjectId,
+    buildTodayTimeline,
+    tehranTimeLabel
   } from '../lib/extract.js'
   import { formatFileSize } from '../lib/docs.js'
   import FileList from './FileList.svelte'
@@ -222,6 +225,33 @@
       })
       .slice(0, 4)
   )
+  // H3-1: today timeline — my unfinished tasks due today or overdue +
+  // undone reminders due today or overdue, by time, max 5.
+  const todayItems = $derived(
+    buildTodayTimeline(
+      { tasks: pulse.tasks, reminders: ws.reminders },
+      new Date(),
+      { meId: auth.member?.id }
+    )
+  )
+  // H3-2: recent rooms enriched with the live room name and the unread
+  // mention count from the same notification pointers as the bell.
+  const recentRooms = $derived(
+    (ws.recentRooms || []).map((r) => {
+      const room = ws.rooms.find((x) => x.id === r.roomId)
+      const unreadMentions = (notif.notifications || []).filter(
+        (n) => n.type === 'mention' && !n.read && n.message?.room_id === r.roomId
+      ).length
+      return { ...r, name: room?.name || 'اتاق', unreadMentions }
+    })
+  )
+
+  function roomTimeLabel(iso) {
+    if (!iso) return ''
+    return tehranDayKey(iso) === tehranDayKey(new Date())
+      ? tehranTimeLabel(iso)
+      : jalaliDayLabel(iso)
+  }
   // H1-4: the progress ring defaults to the current project, else the
   // first project that has tasks, else the first project — so the ring
   // never says «هنوز کاری نیست» while «کارهای من» shows open tasks.
@@ -396,6 +426,15 @@
       })
   })
 
+  // H3-2: reload the recent rooms whenever the room list changes
+  // (workspace load, project switch). Track the room ids, not just the
+  // count — a switch can keep the count while changing the rooms.
+  $effect(() => {
+    const roomIds = ws.rooms.map((r) => r.id).join(',')
+    void roomIds
+    loadRecentRooms()
+  })
+
   function memberNames(ids) {
     if (!ids || ids.length === 0) return ''
     return ids
@@ -481,10 +520,10 @@
 
 <div class="h-full overflow-y-auto px-4 py-6 md:px-8">
   <!-- G3-1: bento grid — 12 columns on desktop, 2 on tablet, 1 on
-       mobile. DOM order is the mobile reading order (greeting,
-       mentions, my tasks, progress, recent docs, activity, favorites,
-       reminders, files, assistant, pulse); desktop placement is explicit
-       lg:col-start/lg:col-span per card. -->
+       mobile. DOM order is the mobile reading order (greeting, today,
+       mentions, my tasks, progress, recent docs, activity,
+       recent-rooms, favorites, reminders, files, assistant, pulse);
+       desktop placement is explicit lg:col-start/lg:col-span per card. -->
   <div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-12" data-home-bento>
   <!-- G2 — هیروی خانه: «سلام + کارهای امروز»؛ صحنهٔ آرام (سبک، کند)
        پشت کارت شیشه‌ای. حرکت نباید خواندن کارهای امروز را بگیرد. -->
@@ -524,6 +563,34 @@
   <!-- G3-2: home cards — every number comes from a real row; every
        card has an empty state. No number without a source; no
        consumption-percentage bar is built. -->
+  <!-- H3-1: today timeline — my unfinished tasks due today or overdue
+       + undone reminders due today or overdue, by time, max 5. -->
+  <section class="glass-card col-span-1 p-4 md:col-span-1 lg:col-span-5 lg:col-start-1" data-home-card="today">
+    <h2 class="text-base font-bold">امروز</h2>
+    {#if pulse.loading && !pulse.loaded}
+      <p class="mt-2 text-sm opacity-70">در حال بارگذاری…</p>
+    {:else if pulse.error}
+      <p class="mt-2 text-sm text-error">امروز بارگذاری نشد</p>
+    {:else if todayItems.length === 0}
+      <p class="mt-2 text-sm opacity-70">برای امروز چیزی نیست</p>
+      <p class="mt-1 text-xs opacity-60">کار یا یادآوری با سررسید امروز اینجا می‌آید</p>
+    {:else}
+      <ul class="mt-2 space-y-2" data-today-list>
+        {#each todayItems as item (item.kind + ':' + item.id)}
+          <li class="flex items-center gap-2 text-sm">
+            <span class="shrink-0 text-xs font-bold text-primary">{tehranTimeLabel(item.dueAt)}</span>
+            <span class="min-w-0 flex-1 truncate">{item.title}</span>
+            {#if item.overdue}
+              <span class="shrink-0 text-xs text-error">عقب‌مانده</span>
+            {:else if item.kind === 'reminder'}
+              <span class="shrink-0 text-xs opacity-60">یادآوری</span>
+            {/if}
+          </li>
+        {/each}
+      </ul>
+    {/if}
+  </section>
+
   <!-- Card 2: mentions (unread mention pointers, same rows as the bell) -->
   <section class="glass-card col-span-1 p-4 md:col-span-1 lg:col-span-3 lg:col-start-10" data-home-card="mentions">
     <h2 class="text-base font-bold">منشن‌ها</h2>
@@ -543,7 +610,7 @@
   </section>
 
   <!-- Card 3: my tasks — nearest due first, max 4; checkbox toggles done -->
-  <section class="glass-card col-span-1 p-4 md:col-span-1 lg:col-span-5 lg:col-start-1" data-home-card="my-tasks">
+  <section class="glass-card col-span-1 p-4 md:col-span-1 lg:col-span-4 lg:col-start-6" data-home-card="my-tasks">
     <h2 class="text-base font-bold">کارهای من</h2>
     {#if pulse.loading && !pulse.loaded}
       <p class="mt-2 text-sm opacity-70">در حال بارگذاری…</p>
@@ -597,7 +664,7 @@
   </section>
 
   <!-- Card 4: project progress — SVG ring from computeProjectReview -->
-  <section class="glass-card col-span-1 p-4 md:col-span-1 lg:col-span-4 lg:col-start-6" data-home-card="progress">
+  <section class="glass-card col-span-1 p-4 md:col-span-1 lg:col-span-4 lg:col-start-1" data-home-card="progress">
     <h2 class="text-base font-bold">پیشرفت پروژه</h2>
     {#if ws.projects.length === 0}
       <p class="mt-2 text-sm opacity-70">هنوز پروژه‌ای نیست</p>
@@ -708,9 +775,37 @@
     {/if}
   </section>
 
+  <!-- H3-2: recent rooms — newest message per room, newest room first,
+       with the unread mention count from the bell pointers. -->
+  <section class="glass-card col-span-1 p-4 md:col-span-1 lg:col-span-4 lg:col-start-5" data-home-card="recent-rooms">
+    <h2 class="text-base font-bold">اتاق‌های اخیر</h2>
+    {#if ws.recentRoomsLoading}
+      <p class="mt-2 text-sm opacity-70">در حال بارگذاری…</p>
+    {:else if ws.recentRoomsError}
+      <p class="mt-2 text-sm text-error">اتاق‌های اخیر بارگذاری نشد</p>
+    {:else if recentRooms.length === 0}
+      <p class="mt-2 text-sm opacity-70">هنوز پیامی نیست</p>
+    {:else}
+      <ul class="mt-2 space-y-3" data-recent-rooms-list>
+        {#each recentRooms as room (room.roomId)}
+          <li class="text-sm">
+            <div class="flex items-center gap-2">
+              <a href={'#/room/' + room.roomId} class="min-w-0 flex-1 truncate font-bold text-primary">{room.name}</a>
+              {#if room.unreadMentions > 0}
+                <span class="badge badge-error badge-sm shrink-0">{faNum(room.unreadMentions)}</span>
+              {/if}
+              <span class="shrink-0 text-xs opacity-60">{roomTimeLabel(room.lastMessage.created_at)}</span>
+            </div>
+            <p class="mt-0.5 truncate text-xs opacity-70">{room.lastMessage.body}</p>
+          </li>
+        {/each}
+      </ul>
+    {/if}
+  </section>
+
   <!-- H2-3: favorites — starred docs, same source as the sidebar
        favorites (pulse.docs + isStarred), max 5. -->
-  <section class="glass-card col-span-1 p-4 md:col-span-1 lg:col-span-4 lg:col-start-1" data-home-card="favorites">
+  <section class="glass-card col-span-1 p-4 md:col-span-1 lg:col-span-4 lg:col-start-9" data-home-card="favorites">
     <h2 class="text-base font-bold">علاقه‌مندی‌ها</h2>
     {#if pulse.loading && !pulse.loaded}
       <p class="mt-2 text-sm opacity-70">در حال بارگذاری…</p>

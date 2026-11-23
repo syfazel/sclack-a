@@ -39,7 +39,9 @@ import {
   computeTeamPulse,
   computePulseChart,
   buildRecentActivity,
-  pickProgressProjectId
+  pickProgressProjectId,
+  buildTodayTimeline,
+  tehranTimeLabel
 } from '../src/lib/extract.js'
 
 const PLACEHOLDER_KEY = 'sb_publishable_PLACEHOLDER-NOT-A-REAL-KEY'
@@ -225,6 +227,42 @@ function unitTests() {
     pickProgressProjectId(pp, pt, 'pX') === 'p2')
   check('H1 unit: no projects gives null',
     pickProgressProjectId([], pt, null) === null)
+  // H3-1: buildTodayTimeline — today + overdue only, mine only, max 5,
+  // ordered by time; tehranTimeLabel is HH:MM in Tehran.
+  const tl = buildTodayTimeline(
+    {
+      tasks: [
+        { id: 'a', title: 'کار امروز صبح', status: 'todo', assignee_id: MEMBER_ID, due_at: pinAt(0, '09:00:00') },
+        { id: 'b', title: 'کار عقب‌مانده', status: 'todo', assignee_id: MEMBER_ID, due_at: pinAt(-1, '15:00:00') },
+        { id: 'c', title: 'کار فردا', status: 'todo', assignee_id: MEMBER_ID, due_at: pinAt(1, '09:00:00') },
+        { id: 'd', title: 'کار تمام‌شده', status: 'done', assignee_id: MEMBER_ID, due_at: pinAt(0, '10:00:00') },
+        { id: 'e', title: 'کار نفر دوم', status: 'todo', assignee_id: MEMBER2_ID, due_at: pinAt(0, '08:00:00') },
+        { id: 'f', title: 'کار بی‌سررسید', status: 'todo', assignee_id: MEMBER_ID, due_at: null }
+      ],
+      reminders: [
+        { id: 'r1', text: 'یادآوری امروز', remind_at: pinAt(0, '18:00:00'), done: false },
+        { id: 'r2', text: 'یادآوری فردا', remind_at: pinAt(1, '09:00:00'), done: false },
+        { id: 'r3', text: 'یادآوری انجام‌شده', remind_at: pinAt(0, '07:00:00'), done: true }
+      ]
+    },
+    PINNED_NOW,
+    { meId: MEMBER_ID }
+  )
+  check('H3 unit: timeline keeps today + overdue, mine only, by time',
+    JSON.stringify(tl.map((x) => x.id)) === JSON.stringify(['b', 'a', 'r1']),
+    JSON.stringify(tl.map((x) => x.id)))
+  check('H3 unit: overdue item is flagged, today items are not',
+    tl[0].overdue === true && tl[1].overdue === false && tl[2].overdue === false)
+  check('H3 unit: reminder title comes from text',
+    tl[2].kind === 'reminder' && tl[2].title === 'یادآوری امروز')
+  check('H3 unit: timeline caps at 5, earliest first',
+    JSON.stringify(buildTodayTimeline(
+      { tasks: [0, 1, 2, 3, 4, 5].map((i) => ({ id: 't' + i, title: 'کار ' + i, status: 'todo', assignee_id: MEMBER_ID, due_at: pinAt(0, '0' + i + ':00:00') })), reminders: [] },
+      PINNED_NOW, { meId: MEMBER_ID }
+    ).map((x) => x.id)) === JSON.stringify(['t0', 't1', 't2', 't3', 't4']))
+  check('H3 unit: tehranTimeLabel is HH:MM in Tehran, Persian digits',
+    tehranTimeLabel('2026-11-22T14:30:00+03:30') === '۱۴:۳۰',
+    tehranTimeLabel('2026-11-22T14:30:00+03:30'))
   check('G3 unit: labels are Jalali short days',
     c.labels.every((l) => typeof l.label === 'string' && l.label.length > 0) &&
     c.labels[6].label === '۱ آذر', JSON.stringify(c.labels.map((l) => l.label)))
@@ -714,6 +752,14 @@ async function main() {
     homeSrc.includes('data-home-card="favorites"'))
   check('H2 bundle: pulse docs select reads custom_fields (starred)',
     dataSrc.includes('custom_fields'))
+  check('H3 bundle: today card exists (data-home-card="today")',
+    homeSrc.includes('data-home-card="today"'))
+  check('H3 bundle: recent-rooms card exists (data-home-card="recent-rooms")',
+    homeSrc.includes('data-home-card="recent-rooms"'))
+  check('H3 bundle: recent-rooms loader queries messages newest-first, limit 100',
+    dataSrc.includes('loadRecentRooms') &&
+    dataSrc.includes(".from('messages')") &&
+    dataSrc.includes('.limit(100)'))
   check('H1 bundle: long titles clamp to two lines (line-clamp-2)',
     homeSrc.includes('line-clamp-2'))
 
@@ -793,21 +839,23 @@ async function main() {
       !w1.document.querySelector('[data-pulse-change-done]'))
   }
 
-  // Bento: DOM order is the mobile reading order; 11 home sections.
+  // Bento: DOM order is the mobile reading order; 13 home sections.
   const cardOrder = [...w1.document.querySelectorAll('[data-home-card]')].map((el) => el.dataset.homeCard)
-  check('H2 mount: 11 home sections in mobile reading order (favorites after activity)',
-    JSON.stringify(cardOrder) === JSON.stringify(['greeting', 'mentions', 'my-tasks', 'progress', 'recent-docs', 'activity', 'favorites', 'reminders', 'files', 'assistant', 'pulse']),
+  check('H3 mount: 13 home sections in mobile reading order (today after greeting, recent-rooms after activity)',
+    JSON.stringify(cardOrder) === JSON.stringify(['greeting', 'today', 'mentions', 'my-tasks', 'progress', 'recent-docs', 'activity', 'recent-rooms', 'favorites', 'reminders', 'files', 'assistant', 'pulse']),
     JSON.stringify(cardOrder))
   const cardCls = (id) => {
     const el = w1.document.querySelector('[data-home-card="' + id + '"]')
     return el ? [...el.classList] : []
   }
+  check('H3 mount: today card is 1/5 on desktop',
+    cardCls('today').includes('lg:col-start-1') && cardCls('today').includes('lg:col-span-5'))
   check('G3 mount: mentions card is 10/3 on desktop',
     cardCls('mentions').includes('lg:col-start-10') && cardCls('mentions').includes('lg:col-span-3'))
-  check('G3 mount: my-tasks card is 1/5 on desktop',
-    cardCls('my-tasks').includes('lg:col-start-1') && cardCls('my-tasks').includes('lg:col-span-5'))
-  check('G3 mount: progress card is 6/4 on desktop',
-    cardCls('progress').includes('lg:col-start-6') && cardCls('progress').includes('lg:col-span-4'))
+  check('H3 mount: my-tasks card is 6/4 on desktop',
+    cardCls('my-tasks').includes('lg:col-start-6') && cardCls('my-tasks').includes('lg:col-span-4'))
+  check('H3 mount: progress card is 1/4 on desktop',
+    cardCls('progress').includes('lg:col-start-1') && cardCls('progress').includes('lg:col-span-4'))
   check('G3 mount: recent-docs card is 1/7 on desktop',
     cardCls('recent-docs').includes('lg:col-start-1') && cardCls('recent-docs').includes('lg:col-span-7'))
   check('G3 mount: activity card is 8/5 on desktop',
@@ -818,8 +866,10 @@ async function main() {
     cardCls('files').includes('lg:col-start-5') && cardCls('files').includes('lg:col-span-4'))
   check('G3 mount: assistant card is 9/4 on desktop',
     cardCls('assistant').includes('lg:col-start-9') && cardCls('assistant').includes('lg:col-span-4'))
-  check('H2 mount: favorites card is 1/4 on desktop',
-    cardCls('favorites').includes('lg:col-start-1') && cardCls('favorites').includes('lg:col-span-4'))
+  check('H3 mount: recent-rooms card is 5/4 on desktop',
+    cardCls('recent-rooms').includes('lg:col-start-5') && cardCls('recent-rooms').includes('lg:col-span-4'))
+  check('H3 mount: favorites card is 9/4 on desktop',
+    cardCls('favorites').includes('lg:col-start-9') && cardCls('favorites').includes('lg:col-span-4'))
   check('G3 mount: pulse card spans all 12 columns on desktop',
     cardCls('pulse').includes('lg:col-span-12'))
 
@@ -833,6 +883,21 @@ async function main() {
   check('G3 mount: mentions link points at the room of the first mention',
     !!mentionLink && mentionLink.getAttribute('href') === '#/room/' + ROOM_ID,
     mentionLink && mentionLink.getAttribute('href'))
+
+  // H3-1: today timeline — r1 18:00, then the three 23:59 tasks in
+  // pulse order (کار ۱۰، کار ۱، کار ۲). t1 is todo in the G3 seed.
+  await waitFor(w1, () => w1.document.querySelectorAll('[data-today-list] li').length === 4, 10000, 'today timeline rows')
+  const todayRows = [...w1.document.querySelectorAll('[data-today-list] li')]
+  check('H3 mount: today timeline shows 4 items, by time (یادآوری ۱۸:۰۰، then ۳ tasks at ۲۳:۵۹)',
+    todayRows.length === 4 &&
+    norm(todayRows[0].textContent).includes('یادآوری پروب') &&
+    norm(todayRows[0].textContent).includes('۱۸:۰۰') &&
+    norm(todayRows[0].textContent).includes('یادآوری') &&
+    norm(todayRows[1].textContent).includes('کار ۱۰') &&
+    norm(todayRows[1].textContent).includes('۲۳:۵۹') &&
+    norm(todayRows[2].textContent).includes('کار ۱') &&
+    norm(todayRows[3].textContent).includes('کار ۲'),
+    JSON.stringify(todayRows.map((li) => norm(li.textContent))))
 
   // My tasks: max 4, nearest due first; checkbox toggles done and the
   // progress ring moves.
@@ -948,6 +1013,25 @@ async function main() {
     favRows.length === 1 && norm(favRows[0].textContent).includes('سند تازه'),
     JSON.stringify(favRows.map((li) => norm(li.textContent))))
 
+  // H3-2: recent rooms — ROOM_ID with the newest message (m3, today
+  // 11:00) and 2 unread mentions (n1, n2); ROOM2 has no messages and
+  // is dropped.
+  await waitFor(w1, () => w1.document.querySelectorAll('[data-recent-rooms-list] li').length === 1, 10000, 'recent rooms rows')
+  const roomRows = [...w1.document.querySelectorAll('[data-recent-rooms-list] li')]
+  check('H3 mount: recent rooms shows the room with messages (گفت‌وگو), newest message + time',
+    roomRows.length === 1 &&
+    norm(roomRows[0].textContent).includes('گفت‌وگو') &&
+    norm(roomRows[0].textContent).includes('پیام m3') &&
+    norm(roomRows[0].textContent).includes('۱۱:۰۰'),
+    JSON.stringify(roomRows.map((li) => norm(li.textContent))))
+  const roomBadge = roomRows[0].querySelector('.badge')
+  check('H3 mount: recent rooms shows the unread mention badge (۲)',
+    !!roomBadge && norm(roomBadge.textContent) === '۲', roomBadge && norm(roomBadge.textContent))
+  const roomLink = roomRows[0].querySelector('a')
+  check('H3 mount: recent room name links to the room',
+    !!roomLink && roomLink.getAttribute('href') === '#/room/' + ROOM_ID,
+    roomLink && roomLink.getAttribute('href'))
+
   // G3-7: presence only in the hero strip; no new Realtime channel.
   check('G3 mount: presence dots live only in the sidebar seats (not in cards)',
     [...w1.document.querySelectorAll('[data-home-card] .rounded-full')].length === 0)
@@ -1037,7 +1121,8 @@ async function main() {
     !w2.document.querySelector('[data-pulse-change-done]'))
   check('G3 empty: every card shows its empty state',
     ['منشنی نیست', 'کاری به تو سپرده نشده', 'هنوز پروژه‌ای نیست', 'هنوز سندی نیست',
-     'سندی ستاره‌دار نیست', 'هنوز فعالیتی نیست', 'یادآوری‌ای نیست', 'هنوز فایلی نیست']
+     'سندی ستاره‌دار نیست', 'هنوز فعالیتی نیست', 'یادآوری‌ای نیست', 'هنوز فایلی نیست',
+     'برای امروز چیزی نیست', 'هنوز پیامی نیست']
       .every((t) => w2.document.body.textContent.includes(t)))
   allErrors.push(...m2.errors)
   m2.dom.window.close()
@@ -1087,6 +1172,10 @@ async function main() {
   allErrors.push(...m5.errors)
   await waitFor(w5, () => w5.document.body.textContent.includes('نبض تیم بارگذاری نشد'), 10000, 'pulse error state')
   check('G3 error: failing pulse queries show a visible error state', true)
+  check('H3 error: today card shows its error state when the pulse fails',
+    norm(w5.document.querySelector('[data-home-card="today"]').textContent).includes('امروز بارگذاری نشد'))
+  await waitFor(w5, () => w5.document.body.textContent.includes('اتاق‌های اخیر بارگذاری نشد'), 10000, 'recent rooms error state')
+  check('H3 error: failing pulse queries show the recent-rooms error state (mount survives)', true)
   check('G3 error: retry button is present',
     [...w5.document.querySelectorAll('[data-home-card="pulse"] button')].some((b) => norm(b.textContent) === 'تلاش دوباره'))
   stub5.opts.failPulse = false

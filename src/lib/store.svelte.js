@@ -25,6 +25,9 @@ export const ws = $state({
   closedDocTabs: [], // تب‌های بسته‌شده — برای Ctrl+Shift+T
   currentProjectId: null,
   currentRoomId: null,
+  recentRooms: [], // H3-2: newest message per current room [{ roomId, lastMessage }]
+  recentRoomsLoading: false,
+  recentRoomsError: '',
   loading: false,
   error: ''
 })

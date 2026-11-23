@@ -516,3 +516,36 @@ export async function loadTeamPulseData() {
     pulse.loading = false
   }
 }
+
+// H3-2: recent rooms — newest message per room. One query on messages
+// (room_id, created_at, body, newest first, limit 100), grouped in JS.
+// Only rooms in ws.rooms; a failure shows the error state instead of
+// breaking the home mount.
+export async function loadRecentRooms() {
+  if (!sb) {
+    ws.recentRooms = []
+    return
+  }
+  ws.recentRoomsLoading = true
+  ws.recentRoomsError = ''
+  try {
+    const { data, error } = await sb
+      .from('messages')
+      .select('room_id, created_at, body')
+      .order('created_at', { ascending: false })
+      .limit(100)
+    if (error) throw error
+    const byRoom = new Map()
+    for (const m of data || []) {
+      if (!byRoom.has(m.room_id)) byRoom.set(m.room_id, m)
+    }
+    ws.recentRooms = [...byRoom.entries()]
+      .filter(([roomId]) => ws.rooms.some((r) => r.id === roomId))
+      .map(([roomId, m]) => ({ roomId, lastMessage: m }))
+  } catch (e) {
+    ws.recentRooms = []
+    ws.recentRoomsError = e.message || String(e)
+  } finally {
+    ws.recentRoomsLoading = false
+  }
+}
