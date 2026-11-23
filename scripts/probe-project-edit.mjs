@@ -347,11 +347,12 @@ async function main() {
   dbRef = db
   const stub = makeStub(db)
 
-  const m1 = await mountApp({ html, js }, stub, '#/')
+  // H4: project cards live on #/projects now, not on home.
+  const m1 = await mountApp({ html, js }, stub, '#/projects')
   const { w } = m1
   m1errors = m1.errors
   await waitFor(w, () => w.document.body.textContent.includes('هدف کهنه'), 10000, 'project card renders')
-  check('mount: #/ renders the project card with its goal', true)
+  check('mount: #/projects renders the project card with its goal', true)
 
   const section = projectsSection(w)
   check('mount: «پروژه‌ها» section found', !!section)

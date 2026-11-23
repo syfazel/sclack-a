@@ -560,10 +560,17 @@ async function main() {
     heroText.includes('عقب‌مانده') && /۱\s*عقب‌مانده/.test(heroText), heroText)
   check('S5 home: hero band shows the light mesh while the chunk loads (jsdom: import() never settles)',
     !!w1.document.querySelector('[data-home-hero] .light-mesh'))
-  check('S5 home: project cards are glass with entry animation',
-    [...w1.document.querySelectorAll('.glass-card.anim-enter')].length >= 1)
-  check('S5 home: review summary cards are glass (G3)',
-    [...w1.document.querySelectorAll('section .glass-card')].length >= 6)
+  // H4: project cards and the review moved off home to #/projects —
+  // the glass checks follow them there (same stub/db as the home mount).
+  const m1p = await mountApp({ html, js }, stub, '#/projects')
+  const w1p = m1p.w
+  allErrors.push(...m1p.errors)
+  await waitFor(w1p, () => w1p.document.body.textContent.includes('پروژهٔ پروب S5'), 10000, 'project card on projects page')
+  check('S5 projects: project cards are glass with entry animation',
+    [...w1p.document.querySelectorAll('.glass-card.anim-enter')].length >= 1)
+  check('S5 projects: review summary cards are glass (G3)',
+    [...w1p.document.querySelectorAll('section .glass-card')].length >= 6)
+  m1p.dom.window.close()
   check('S5 home: sidebar is light glass mild (G4, 0.12.0)',
     !!w1.document.querySelector('aside.glass-mild'))
   check('S5 home: presence dot exists in the member seats (G6)',

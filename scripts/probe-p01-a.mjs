@@ -419,9 +419,10 @@ async function main() {
   check('P01 UI strings in built bundle', ['بازبینی', 'بایگانی‌شده', 'بدون تاریخ', 'هدف پروژه', 'خروجی نهایی', 'بستن پروژه'].every((s) => js.includes(s)))
 
   // ================= Mount A: A1 create + reject, A3, one task, A5 =================
+  // H4: the project form lives on #/projects now, not on home.
   const db1 = makeDb()
   const stub1 = makeStub(db1)
-  const m1 = await mountApp({ html, js }, stub1, '#/')
+  const m1 = await mountApp({ html, js }, stub1, '#/projects')
   const w = m1.w
   allErrors.push(...m1.errors)
 
@@ -486,10 +487,10 @@ async function main() {
   const room1 = db1.rooms[0]
 
   // A1 rejection 3: duplicate name.
-  w.location.hash = '#/'
+  w.location.hash = '#/projects'
   w.dispatchEvent(new w.Event('hashchange'))
   await sleep(800)
-  const nameInput2 = await waitFor(w, () => w.document.querySelector('input[placeholder="نام پروژه *"]'), 10000, 'project form after return home')
+  const nameInput2 = await waitFor(w, () => w.document.querySelector('input[placeholder="نام پروژه *"]'), 10000, 'project form after return to projects')
   const form2 = nameInput2.closest('section')
   setInput(w, nameInput2, 'پروژهٔ پروب P01')
   setInput(w, form2.querySelector('input[placeholder="هدف پروژه *"]'), 'هدف دیگر')
@@ -499,14 +500,13 @@ async function main() {
   check('A1: duplicate name rejected with a clear message', form2.textContent.includes('پروژه‌ای با این نام هست'), form2.textContent.slice(0, 300))
   check('A1: duplicate wrote no second row', db1.projects.length === 1)
 
-  // A3 UI: home shows the project's room and doc (the file check runs
-  // in the reload mount below: the file is seeded after this mount's
-  // FileList already loaded, and nothing re-fetches it here).
-  w.location.hash = '#/'
-  w.dispatchEvent(new w.Event('hashchange'))
+  // A3 UI: the projects page shows the project's room and doc (the file
+  // check runs in the reload mount below: the file is seeded after this
+  // mount's FileList already loaded, and nothing re-fetches it here).
+  // We are already on #/projects from the duplicate check above.
   await sleep(800)
-  check('A3: home shows the project room «گفت‌وگو»', w.document.body.textContent.includes('گفت‌وگو'))
-  check('A3: home shows the project doc «سند»', w.document.body.textContent.includes('سند'))
+  check('A3: projects page shows the project room «گفت‌وگو»', w.document.body.textContent.includes('گفت‌وگو'))
+  check('A3: projects page shows the project doc «سند»', w.document.body.textContent.includes('سند'))
 
   // One task for the A5 readability check.
   w.location.hash = '#/tasks'
@@ -528,7 +528,7 @@ async function main() {
   // ---- Reload (fresh mount, same db): all 5 fields in place ----
   // Seed a file for the project first: the fresh mount loads it.
   db1.files.push({ id: 'file-1', project_id: p1.id, name: 'فایل پروب.pdf', size: 100, mime: 'application/pdf', storage: 'supabase', storage_path: p1.id + '/f.pdf', drive_id: null, uploaded_by: MEMBER_ID, uploaded_at: new Date().toISOString(), attached_to_type: null, attached_to_id: null, visibility: 'project', custom_fields: {} })
-  const m1r = await mountApp({ html, js }, stub1, '#/')
+  const m1r = await mountApp({ html, js }, stub1, '#/projects')
   const wr = m1r.w
   allErrors.push(...m1r.errors)
   const expectedDate = new Date('2026-12-31T23:59:00').toLocaleDateString('fa-IR')
@@ -544,20 +544,21 @@ async function main() {
   check('A1: after reload, deadline is in place', cardText.includes(expectedDate), 'expected: ' + expectedDate)
   check('A1: after reload, members are in place (only the checked one)', cardText.includes('yasin') && !cardText.includes('زهرا'))
   check('A1: after reload, stage label is «ساخته‌شده»', cardText.includes('ساخته‌شده'))
-  check('A3: after reload, home shows the project file', wr.document.body.textContent.includes('فایل پروب.pdf'))
+  check('A3: after reload, projects page shows the project file', wr.document.body.textContent.includes('فایل پروب.pdf'))
   m1r.dom.window.close()
 
   // ---- A5: close the project (two-step confirm is stubbed true) ----
-  // NOTE (2026-11-22): A5 mounts FRESH at '#/' instead of navigating
-  // the long-lived window `w` home. After the G3 pulse loader has run,
-  // Svelte 5.59's async batch/view bookkeeping shadows the App route
-  // state in jsdom: the hashchange handler sees '#/', assigns a fresh
-  // {name:'home'}, yet the route still reads 'tasks' (zero JS errors).
-  // The same navigation works in a fresh mount and in real browsers
-  // (every live test), so the artifact is jsdom-only. The close itself
-  // is verified end-to-end here; in-window navigation is covered by
-  // the earlier steps (creation, duplicate check, A3, tasks nav).
-  const m1a = await mountApp({ html, js }, stub1, '#/')
+  // NOTE (2026-11-22, updated H4): A5 mounts FRESH at '#/projects'
+  // instead of navigating the long-lived window `w` there. After the G3
+  // pulse loader has run, Svelte 5.59's async batch/view bookkeeping
+  // shadows the App route state in jsdom: the hashchange handler sees
+  // the new hash, assigns a fresh route, yet the route still reads the
+  // old one (zero JS errors). The same navigation works in a fresh
+  // mount and in real browsers (every live test), so the artifact is
+  // jsdom-only. The close itself is verified end-to-end here; in-window
+  // navigation is covered by the earlier steps (creation, duplicate
+  // check, A3, tasks nav).
+  const m1a = await mountApp({ html, js }, stub1, '#/projects')
   const wa = m1a.w
   allErrors.push(...m1a.errors)
   await waitFor(wa, () => [...wa.document.querySelectorAll('button')].some((b) => b.textContent.trim() === 'بستن پروژه'), 10000, 'close button on card')
@@ -705,7 +706,7 @@ async function main() {
     mkTask('t5', 'باز', 'todo', now3 + 6 * day)
   )
   const stub3 = makeStub(db3)
-  const m3 = await mountApp({ html, js }, stub3, '#/')
+  const m3 = await mountApp({ html, js }, stub3, '#/projects')
   const w3 = m3.w
   allErrors.push(...m3.errors)
   const reviewSection = await waitFor(

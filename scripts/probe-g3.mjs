@@ -702,6 +702,8 @@ async function main() {
   const homeSrc = readFileSync(srcDir + 'components/HomeView.svelte', 'utf8')
   const sidebarSrc = readFileSync(srcDir + 'components/Sidebar.svelte', 'utf8')
   const dataSrc = readFileSync(srcDir + 'lib/data.js', 'utf8')
+  const projectsSrc = readFileSync(srcDir + 'components/ProjectsView.svelte', 'utf8')
+  const appSrc = readFileSync(srcDir + 'App.svelte', 'utf8')
   const cssFile = readdirSync(new URL('../dist/assets/', import.meta.url).pathname)
     .find((f) => f.startsWith('index-') && f.endsWith('.css'))
   const css = cssFile ? readFileSync(new URL('../dist/assets/' + cssFile, import.meta.url).pathname, 'utf8') : ''
@@ -735,13 +737,15 @@ async function main() {
     !homeSrc.includes('#7C3AED') && !homeSrc.includes('#7c3aed') && !homeSrc.includes('btn-ai') &&
     !homeSrc.includes('var(--ai-accent)'))
   // H1: two-tap close (no native confirm), compact hero, glass form
-  // card, soft assistant border, two-line titles.
-  check('H1 bundle: no native confirm() call left in HomeView',
-    !homeSrc.includes('confirm('), 'confirm( still in HomeView')
+  // card, soft assistant border, two-line titles. The close/delete
+  // logic and the form moved to ProjectsView in H4 — the checks follow.
+  check('H1 bundle: no native confirm() call left in HomeView or ProjectsView',
+    !homeSrc.includes('confirm(') && !projectsSrc.includes('confirm('),
+    'confirm( still in HomeView or ProjectsView')
   check('H1 bundle: hero is compact (h-44, not h-60)',
     homeSrc.includes('relative h-44') && !homeSrc.includes('relative h-60'))
   check('H1 bundle: project creation form card is glass (no bg-base-200)',
-    homeSrc.includes('<div class="card glass-card">') && !homeSrc.includes('bg-base-200'))
+    projectsSrc.includes('<div class="card glass-card">') && !projectsSrc.includes('bg-base-200'))
   check('H1 bundle: assistant card border is soft jigari 0.25 (minified as #7f1d1d40)',
     css.includes('.ai-card{border:1px solid #7f1d1d40}'))
   check('H2 bundle: quick-task input on the my-tasks card',
@@ -760,6 +764,20 @@ async function main() {
     dataSrc.includes('loadRecentRooms') &&
     dataSrc.includes(".from('messages')") &&
     dataSrc.includes('.limit(100)'))
+  // H4: project management lives on #/projects now — route, sidebar
+  // entries, and no project form left on home.
+  check('H4 bundle: #/projects route exists in App.svelte',
+    appSrc.includes("if (h === '/projects') return { name: 'projects' }") &&
+    appSrc.includes("import ProjectsView from './components/ProjectsView.svelte'") &&
+    appSrc.includes('<ProjectsView />'))
+  check('H4 bundle: sidebar links to #/projects (section entry + new-project button)',
+    sidebarSrc.includes('href="#/projects"') &&
+    sidebarSrc.includes('همهٔ پروژه‌ها') &&
+    sidebarSrc.includes('ساختن پروژهٔ تازه'))
+  check('H4 bundle: home has no project creation form any more',
+    !homeSrc.includes('placeholder="نام پروژه *"') &&
+    !homeSrc.includes('ساختن پروژهٔ تازه') &&
+    !homeSrc.includes('اتاق‌های پروژهٔ جاری'))
   check('H1 bundle: long titles clamp to two lines (line-clamp-2)',
     homeSrc.includes('line-clamp-2'))
 
@@ -872,6 +890,10 @@ async function main() {
     cardCls('favorites').includes('lg:col-start-9') && cardCls('favorites').includes('lg:col-span-4'))
   check('G3 mount: pulse card spans all 12 columns on desktop',
     cardCls('pulse').includes('lg:col-span-12'))
+
+  // H4: home is dashboard-only — no project creation form on it.
+  check('H4 mount: home has no project creation form',
+    !w1.document.querySelector('input[placeholder="نام پروژه *"]'))
 
   // Mentions card (from the same notification pointers as the bell).
   // loadNotifications() runs async in onMount — wait for its rows.
@@ -1063,6 +1085,15 @@ async function main() {
   const aside = w1.document.querySelector('aside[data-sidebar]')
   check('G3 mount: sidebar is w-[72px] at md and lg:w-[264px]',
     !!aside && aside.classList.contains('w-[72px]') && aside.classList.contains('lg:w-[264px]'))
+  // H4: sidebar entries point at #/projects.
+  const allProjectsLink = [...w1.document.querySelectorAll('aside[data-sidebar] a')].find((a) => norm(a.textContent) === 'همهٔ پروژه‌ها')
+  check('H4 mount: sidebar «همهٔ پروژه‌ها» links to #/projects',
+    !!allProjectsLink && allProjectsLink.getAttribute('href') === '#/projects',
+    allProjectsLink && allProjectsLink.getAttribute('href'))
+  const newProjectLink = [...w1.document.querySelectorAll('aside[data-sidebar] a')].find((a) => norm(a.textContent) === 'ساختن پروژهٔ تازه')
+  check('H4 mount: sidebar «ساختن پروژهٔ تازه» links to #/projects',
+    !!newProjectLink && newProjectLink.getAttribute('href') === '#/projects',
+    newProjectLink && newProjectLink.getAttribute('href'))
 
   allErrors.push(...m1.errors)
   m1.dom.window.close()
@@ -1101,6 +1132,36 @@ async function main() {
     w1b.location.hash === '#/doc/' + (nd && nd.id), w1b.location.hash)
   allErrors.push(...m1b.errors)
   m1b.dom.window.close()
+
+  // ---- mount P: H4 projects page ----
+  const dbP = makeDb()
+  seedG3(dbP)
+  const stubP = makeStub(dbP)
+  const mP = await mountApp({ html, js }, stubP, '#/projects')
+  const wP = mP.w
+  allErrors.push(...mP.errors)
+  await waitFor(wP, () => wP.document.querySelector('input[placeholder="نام پروژه *"]'), 10000, 'projects form')
+  check('H4 mount: projects page renders the creation form', true)
+  await waitFor(wP, () => wP.document.querySelectorAll('h3.card-title').length === 2, 10000, 'projects grid')
+  const projNames = [...wP.document.querySelectorAll('h3.card-title')].map((el) => norm(el.textContent))
+  check('H4 mount: projects page lists both projects',
+    projNames.includes('پروژهٔ پروب G3') && projNames.includes('پروژهٔ خالی'),
+    JSON.stringify(projNames))
+  check('H4 mount: projects page shows the current project review (بازبینی)',
+    wP.document.body.textContent.includes('بازبینی'))
+  check('H4 mount: projects page shows the current project rooms/docs/files sections',
+    wP.document.body.textContent.includes('اتاق‌های پروژهٔ جاری') &&
+    wP.document.body.textContent.includes('سندهای پروژهٔ جاری') &&
+    wP.document.body.textContent.includes('فایل‌های پروژهٔ جاری'))
+  // H1-1 two-tap close still works on the projects page: first tap arms.
+  const closeBtn = [...wP.document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'بستن پروژه')
+  check('H4 mount: close button renders on the projects page', !!closeBtn)
+  closeBtn.click()
+  await waitFor(wP, () => [...wP.document.querySelectorAll('button')].some((b) => b.textContent.trim() === 'مطمئنید؟ بستن پروژه'), 10000, 'close arms on first tap')
+  check('H4 mount: first tap arms the close (nothing archived yet)',
+    dbP.projects.length === 2 && dbP.projects.every((p) => !p.archived))
+  allErrors.push(...mP.errors)
+  mP.dom.window.close()
 
   // ---- mount 2: empty workspace ----
   const db2 = makeDb()

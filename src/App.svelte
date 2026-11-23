@@ -12,6 +12,7 @@
   import Sidebar from './components/Sidebar.svelte'
   import DocTabs from './components/DocTabs.svelte'
   import HomeView from './components/HomeView.svelte'
+  import ProjectsView from './components/ProjectsView.svelte'
   import RoomsView from './components/RoomsView.svelte'
   import ChatView from './components/ChatView.svelte'
   import DocView from './components/DocView.svelte'
@@ -36,6 +37,7 @@
   function parseRoute(hashValue) {
     const h = (hashValue || '#/').replace(/^#/, '') || '/'
     if (h === '/' || h === '') return { name: 'home' }
+    if (h === '/projects') return { name: 'projects' }
     if (h === '/rooms') return { name: 'rooms' }
     if (h === '/tasks') return { name: 'tasks' }
     if (h === '/budget') return { name: 'budget' }
@@ -126,6 +128,9 @@
     ws.reminders = []
     ws.currentProjectId = null
     ws.currentRoomId = null
+    ws.recentRooms = []
+    ws.recentRoomsLoading = false
+    ws.recentRoomsError = ''
     notif.notifications = []
     notif.unreadCount = 0
     pulse.messages = []
@@ -239,6 +244,8 @@
       {/if}
       {#if route.name === 'home'}
         <HomeView />
+      {:else if route.name === 'projects'}
+        <ProjectsView />
       {:else if route.name === 'rooms'}
         <RoomsView />
       {:else if route.name === 'room'}

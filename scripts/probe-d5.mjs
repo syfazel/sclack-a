@@ -129,15 +129,20 @@ check(
 }
 
 // ---------- 8. templates ----------
+// Phase 8 added 3 task templates (کار با چک‌لیست، کار با مهلت یک
+// هفته‌ای، زیروظیفهٔ مرحله) — the built-in set is 7, not 4.
 {
   const names = BUILTIN_TEMPLATES.map((t) => t.name)
   check(
-    '4 built-in templates with the Space names',
-    names.length === 4 &&
+    '7 built-in templates with the Space names',
+    names.length === 7 &&
       names.includes('یادداشت جلسه') &&
       names.includes('فهرست کار') &&
       names.includes('سند خالی') &&
-      names.includes('پروژه با یادداشت جلسه'),
+      names.includes('پروژه با یادداشت جلسه') &&
+      names.includes('کار با چک‌لیست') &&
+      names.includes('کار با مهلت یک هفته‌ای') &&
+      names.includes('زیروظیفهٔ مرحله'),
     JSON.stringify(names)
   )
   const meeting = BUILTIN_TEMPLATES.find((t) => t.name === 'یادداشت جلسه')

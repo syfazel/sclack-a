@@ -330,6 +330,10 @@
       پروژه‌ها
     </button>
     {#if !collapsedSections.has('projects')}
+      <!-- H4-3: entry to the projects page (management moved off home). -->
+      <div class="mb-1">
+        <a href="#/projects" class="btn btn-ghost btn-sm w-full justify-start px-2">همهٔ پروژه‌ها</a>
+      </div>
       {#if ws.loading}
         <p class="text-sm opacity-60">در حال بارگذاری…</p>
       {:else if ws.projects.length === 0}
@@ -362,10 +366,10 @@
         </ul>
       {/if}
       <!-- P01 A1: no name-only quick create here — a project is created
-           from the full form on the home page (name, goal and deadline
-           are required), so the sidebar only links to it. -->
+           from the full form on the projects page (name, goal and
+           deadline are required), so the sidebar only links to it. -->
       <div class="mt-2">
-        <a href="#/" class="btn btn-sclack btn-sm btn-primary w-full">ساختن پروژهٔ تازه</a>
+        <a href="#/projects" class="btn btn-sclack btn-sm btn-primary w-full">ساختن پروژهٔ تازه</a>
       </div>
     {/if}
   </section>

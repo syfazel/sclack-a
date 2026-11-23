@@ -743,8 +743,8 @@ async function main() {
     !!msgDeleteBtn(w1, 'پیام تازهٔ پروب حذف'))
   m1.dom.window.close()
 
-  // ---- mount 2: home — project delete ----
-  const m2 = await mountApp({ html, js }, stub, '#/')
+  // ---- mount 2: projects page — project delete ----
+  const m2 = await mountApp({ html, js }, stub, '#/projects')
   const w2 = m2.w
   allErrors.push(...m2.errors)
   await waitFor(w2, () => w2.document.body.textContent.includes('پروژهٔ پاک‌شدنی'), 10000, 'project cards render')
@@ -796,13 +796,14 @@ async function main() {
     !!projectDeleteBtn(w2, 'پروژهٔ پروب حذف') &&
     projectDeleteBtn(w2, 'پروژهٔ پروب حذف').textContent.trim() === 'حذف پروژه')
 
-  // Make P2 the current project first (its card), then go home and
-  // delete it: the current project must switch away afterwards.
+  // Make P2 the current project first (its card), then go to the
+  // projects page and delete it: the current project must switch away
+  // afterwards.
   projectOpenBtn(w2, 'پروژهٔ پاک‌شدنی').click()
   await waitFor(w2, () => w2.document.body.textContent.includes('پیام پروژهٔ پاک‌شدنی'), 10000, 'P2 room opens')
-  w2.location.hash = '#/'
+  w2.location.hash = '#/projects'
   w2.dispatchEvent(new w2.Event('hashchange'))
-  await waitFor(w2, () => projectDeleteBtn(w2, 'پروژهٔ پاک‌شدنی'), 10000, 'back home, P2 card renders')
+  await waitFor(w2, () => projectDeleteBtn(w2, 'پروژهٔ پاک‌شدنی'), 10000, 'back to projects, P2 card renders')
   projectDeleteBtn(w2, 'پروژهٔ پاک‌شدنی').click()
   await sleep(300)
   projectDeleteBtn(w2, 'پروژهٔ پاک‌شدنی').click()
@@ -825,7 +826,7 @@ async function main() {
     JSON.stringify({ projects: db.projects.length, rooms: db.rooms.length, messages: db.messages.length }))
   check('proj-delete: Zahra’s project is untouched', db.projects.some((p) => p.id === P3))
   await sleep(500)
-  check('proj-delete: the deleted project card is gone from home', !projectCard(w2, 'پروژهٔ پاک‌شدنی'))
+  check('proj-delete: the deleted project card is gone from the projects page', !projectCard(w2, 'پروژهٔ پاک‌شدنی'))
   check('proj-delete: the other project card is still there', !!projectCard(w2, 'پروژهٔ پروب حذف'))
   check('proj-delete: current project switched away from the deleted one',
     !norm(w2.document.body.textContent).includes('اتاق دوم') && norm(w2.document.body.textContent).includes('گفت‌وگو'),

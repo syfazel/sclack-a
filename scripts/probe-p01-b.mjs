@@ -672,9 +672,15 @@ async function main() {
   const v2snapBefore = v2.snapshot_ref
   check('B3: version 2 snapshot holds S1 + addition', textOfDocRow({ custom_fields: { yjs_state_b64: v2.snapshot_ref } }) === S1 + ADD2)
   check('B3: version 2 note recorded', v2.note === 'نسخهٔ دو')
-  // Restore version 1 (confirm() is stubbed true).
+  // Restore version 1 (confirm() is stubbed true). The panel shows its
+  // loading state while it re-lists after the v2 save, so the v1 card
+  // is only readable once the refresh lands — wait for it. (The panel
+  // renders faNum, so the digits are Persian ۱/۲ — Phase 9.)
+  await waitFor(wE, () => [...wE.document.querySelectorAll('li')].some(
+    (li) => li.textContent.includes('نسخهٔ ۱') && !li.textContent.includes('نسخهٔ ۲') && li.textContent.includes('برگرداندن')
+  ), 10000, 'version 1 card with restore button')
   const v1Card = [...wE.document.querySelectorAll('li')].find(
-    (li) => li.textContent.includes('نسخهٔ 1') && !li.textContent.includes('نسخهٔ 2') && li.textContent.includes('برگرداندن')
+    (li) => li.textContent.includes('نسخهٔ ۱') && !li.textContent.includes('نسخهٔ ۲') && li.textContent.includes('برگرداندن')
   )
   check('B3: version 1 card with restore button found', !!v1Card)
   if (v1Card) {
@@ -684,7 +690,7 @@ async function main() {
   const v3 = db2.versions.find((v) => v.version_no === 3)
   check('B3: restore creates a NEW version 3', !!v3)
   check('B3: version 3 snapshot holds S1 (restored text)', v3 && textOfDocRow({ custom_fields: { yjs_state_b64: v3.snapshot_ref } }) === S1)
-  check('B3: version 3 note names its source', v3 && (v3.note || '').includes('برگردانده‌شده از نسخهٔ 1'), JSON.stringify(v3 && v3.note))
+  check('B3: version 3 note names its source', v3 && (v3.note || '').includes('برگردانده‌شده از نسخهٔ ۱'), JSON.stringify(v3 && v3.note))
   const v2After = db2.versions.find((v) => v.version_no === 2)
   check('B3: version 2 untouched by the restore', v2After.snapshot_ref === v2snapBefore && v2After.version_no === 2)
   await waitFor(wE, () => taE.value === S1, 10000, 'doc text back to S1 after restore')
