@@ -9,7 +9,8 @@ import {
   buildSearchSnippet,
   escapeSearchPattern,
   nextTaskStatus,
-  nextVersionNo
+  nextVersionNo,
+  validateTaskParent
 } from './extract.js'
 
 // Work & memory (D5): tasks, templates, reminders, global search, versions.
@@ -136,6 +137,64 @@ export async function setTaskDone(task, done) {
   return data
 }
 
+// ---------- Phase 8: subtasks + checklists ----------
+// Move a task under a new parent (null = back to the root). The cycle
+// guard runs first, against ws.tasks. When the live table has no
+// parent_id column yet (the migration runs by hand in the SQL Editor),
+// the write answers 42703 — that turns into a clear Persian message
+// instead of breaking anything else. createTask never writes parent_id
+// (same pattern as createDoc): a subtask is created, then re-parented
+// here, so task creation never breaks on a missing column.
+export async function setTaskParent(task, newParentId) {
+  if (!task?.id) throw new Error('ردیف کار مشخص نیست.')
+  const parent = newParentId || null
+  const bad = validateTaskParent(ws.tasks, task.id, parent)
+  if (bad) throw new Error(bad)
+  if (parent) {
+    const parentRow = (ws.tasks || []).find((t) => t.id === parent)
+    if (parentRow && parentRow.project_id !== task.project_id) {
+      throw new Error('کار والد باید از همان پروژه باشد.')
+    }
+  }
+  const { error } = await sb
+    .from('tasks')
+    .update({ parent_id: parent })
+    .eq('id', task.id)
+  if (error) {
+    if (isMissingColumnError(error)) {
+      throw new Error(
+        'ستون زیروظیفه هنوز روی دادهٔ زنده ساخته نشده است؛ اول مهاجرت را در SQL Editor اجرا کنید.'
+      )
+    }
+    throw error
+  }
+  await loadTasks(task.project_id)
+  return { ...task, parent_id: parent }
+}
+
+// Replace a task's checklist (custom_fields.checklist: [{text, done}]).
+// The rest of custom_fields (link, P01 provenance) is merged, not lost.
+export async function updateChecklist(task, checklist) {
+  if (!task?.id) throw new Error('ردیف کار مشخص نیست.')
+  const clean = (checklist || [])
+    .filter((item) => item && typeof item.text === 'string' && item.text.trim() !== '')
+    .map((item) => ({ text: item.text.trim(), done: item.done === true }))
+  const { data, error } = await sb
+    .from('tasks')
+    .update({
+      custom_fields: {
+        ...(task.custom_fields || {}),
+        checklist: clean
+      }
+    })
+    .eq('id', task.id)
+    .select()
+    .single()
+  if (error) throw error
+  await loadTasks(task.project_id)
+  return data
+}
+
 export async function deleteTask(task) {
   if (!task?.id) throw new Error('ردیف کار مشخص نیست.')
   // PostgREST DELETE without .select() answers success even when RLS
@@ -166,7 +225,7 @@ export async function loadTemplates() {
   else ws.error = error.message
 }
 
-// Insert the 4 built-in templates when the table has none of them yet.
+// Insert the 7 built-in templates when the table has none of them yet.
 // Team-wide read; any member may seed. Idempotent by name.
 export async function seedTemplates() {
   if (!sb || !auth.member) throw new Error('ردیف عضو هنوز ساخته نشده است.')
@@ -204,12 +263,36 @@ export async function createDocWithText(projectId, title, text) {
 
 // One-tap create from a template. Doc templates make a doc in the current
 // project; the project template makes a project (with its auto room + auto
-// doc) and fills the auto doc with the meeting skeleton. A project
-// template also goes through the P01 form rule: goal and deadline are
-// required (createProject validates them).
+// doc) and fills the auto doc with the meeting skeleton; task templates
+// make a task in the current project (with a checklist and/or a due date
+// when the template carries them). A project template also goes through
+// the P01 form rule: goal and deadline are required (createProject
+// validates them).
 export async function createFromTemplate(template, { projectId, projectName, projectGoal, projectDeadline }) {
   if (!template) throw new Error('قالب مشخص نیست.')
   const kind = template.structure?.kind || template.type
+  if (kind === 'task') {
+    if (!projectId) throw new Error('اول یک پروژه انتخاب کنید.')
+    const dueInDays = template.structure?.dueInDays
+    const dueAt =
+      typeof dueInDays === 'number'
+        ? new Date(Date.now() + dueInDays * 24 * 60 * 60 * 1000).toISOString()
+        : null
+    const task = await createTask({
+      projectId,
+      title: template.structure?.title || template.name,
+      description: template.structure?.description || '',
+      dueAt
+    })
+    const checklist = template.structure?.checklist
+    if (Array.isArray(checklist) && checklist.length > 0) {
+      await updateChecklist(
+        task,
+        checklist.map((text) => ({ text, done: false }))
+      )
+    }
+    return { task }
+  }
   if (kind === 'project') {
     const { project, room, doc } = await createProject({
       name: projectName,

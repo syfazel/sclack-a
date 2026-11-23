@@ -6,6 +6,8 @@
     updateTask,
     cycleTaskStatus,
     deleteTask,
+    setTaskParent,
+    updateChecklist,
     seedTemplates,
     createFromTemplate,
     createReminder,
@@ -15,8 +17,10 @@
   } from '../lib/work.js'
   import {
     TASK_STATUS_LABEL,
+    TASK_STATUSES,
     PLANNER_MENUS,
     WEEKDAY_LABELS_FA,
+    faNum,
     plannerMenuTasks,
     plannerCalendarCounts,
     plannerDayTasks,
@@ -28,7 +32,9 @@
     jalaliDayLabel,
     weekdayOfDayKey,
     shiftJalaliMonth,
-    isOverdueTask
+    isOverdueTask,
+    buildTaskTree,
+    taskParentOptions
   } from '../lib/extract.js'
   import SearchBox from './SearchBox.svelte'
   import FileList from './FileList.svelte'
@@ -36,6 +42,16 @@
 
   // --- planner (P01 C): exactly the 8 menus of C1, on #/tasks ---
   let plannerMenu = $state('today')
+  // Phase 8: list vs kanban (D9 الف — جابه‌جایی با تپ روی دکمهٔ وضعیت).
+  let viewMode = $state('list') // 'list' | 'kanban'
+  const showKanban = $derived(
+    viewMode === 'kanban' && plannerMenu !== 'calendar' && plannerMenu !== 'reminders'
+  )
+  // درخت کارها روی فهرستِ فیلترشدهٔ منوی جاری: والدی که در این منو
+  // نیست، فرزندش را در این نما ریشه می‌کند (buildTaskTree همین را
+  // می‌کند) — فرزند گم نمی‌شود.
+  const taskTree = $derived(buildTaskTree(menuData.tasks))
+  const calDayTree = $derived(buildTaskTree(calDayTasks))
   let calAnchor = $state(new Date())
   let calSelectedDay = $state(null)
   const todayKey = tehranDayKey(new Date())
@@ -127,9 +143,13 @@
   let editDue = $state('')
   let editLinkType = $state('')
   let editLinkId = $state('')
+  let editParentId = $state('') // Phase 8: والد تازه ('' = ریشه)
   let editError = $state('')
   let editBusy = $state(false)
   let editSavedId = $state(null)
+
+  // Phase 8: پیش‌نویس مورد تازهٔ چک‌لیست، برای هر کار جدا.
+  let checklistDrafts = $state({})
 
   // --- templates ---
   let projectTemplateName = $state('')
@@ -263,7 +283,35 @@
     const cf = t.custom_fields || {}
     editLinkType = cf.link_type || ''
     editLinkId = cf.link_id || ''
+    editParentId = t.parent_id || ''
     editError = ''
+  }
+
+  // Phase 8: چک‌لیست — تیک یک مورد، یا افزودن مورد تازه.
+  function checklistOf(t) {
+    return Array.isArray(t.custom_fields?.checklist) ? t.custom_fields.checklist : []
+  }
+
+  async function doToggleChecklist(t, index) {
+    const list = checklistOf(t)
+    if (!list[index]) return
+    const next = list.map((item, i) => (i === index ? { ...item, done: !item.done } : item))
+    try {
+      await updateChecklist(t, next)
+    } catch (e) {
+      taskErrorById = { ...taskErrorById, [t.id]: e.message || String(e) }
+    }
+  }
+
+  async function doAddChecklistItem(t) {
+    const draft = (checklistDrafts[t.id] || '').trim()
+    if (!draft) return
+    try {
+      await updateChecklist(t, [...checklistOf(t), { text: draft, done: false }])
+      checklistDrafts = { ...checklistDrafts, [t.id]: '' }
+    } catch (e) {
+      taskErrorById = { ...taskErrorById, [t.id]: e.message || String(e) }
+    }
   }
 
   function cancelEdit() {
@@ -282,7 +330,7 @@
     editBusy = true
     editError = ''
     try {
-      await updateTask(task, {
+      const updated = await updateTask(task, {
         title: editTitle,
         description: editDesc,
         assigneeId: editAssignee || null,
@@ -290,6 +338,12 @@
         linkType: editLinkType || null,
         linkId: editLinkId || null
       })
+      // Phase 8: والد فقط وقتی عوض شده باشد نوشته می‌شود — اگر ستون
+      // زیروظیفه روی دادهٔ زنده نیست، setTaskParent با پیام روشن رد
+      // می‌کند و ویرایشِ متنِ کار همان‌طور ذخیره‌شده می‌ماند.
+      if ((editParentId || '') !== (task.parent_id || '')) {
+        await setTaskParent(updated, editParentId || null)
+      }
       editSavedId = task.id
       editingTaskId = null
       setTimeout(() => {
@@ -308,7 +362,7 @@
     templateMsg = ''
     try {
       await seedTemplates()
-      templateMsg = '۴ قالب آماده ساخته شد.'
+      templateMsg = '۷ قالب آماده ساخته شد.'
     } catch (e) {
       templateMsg = e.message || String(e)
     } finally {
@@ -340,6 +394,8 @@
       } else if (res.doc) {
         templateMsg = 'سند «' + res.doc.title + '» ساخته شد.'
         location.hash = '#/doc/' + res.doc.id
+      } else if (res.task) {
+        templateMsg = 'کار «' + res.task.title + '» ساخته شد.'
       }
     } catch (e) {
       templateMsg = e.message || String(e)
@@ -377,6 +433,8 @@
       class="card bg-base-200 {editingTaskId === t.id ? 'task-editing' : ''} {editSavedId === t.id
         ? 'task-saved-flash'
         : ''}"
+      data-task-row={t.id}
+      data-task-parent={t.parent_id || ''}
     >
       <div class="card-body gap-1 py-3">
         <div class="flex items-start gap-2">
@@ -437,6 +495,45 @@
             <a href={linkHref(t)} class="link link-primary">{linkLabel(t)}</a>
           </p>
         {/if}
+        <!-- Phase 8: چک‌لیست — تیک موردها + افزودن مورد تازه. -->
+        <div class="mt-2 rounded-xl bg-base-100 px-3 py-2" data-checklist={t.id}>
+          {#if checklistOf(t).length > 0}
+            <p class="mb-1 text-xs font-bold opacity-70">
+              چک‌لیست ({faNum(checklistOf(t).filter((i) => i.done).length)} از {faNum(checklistOf(t).length)})
+            </p>
+            <ul class="flex flex-col gap-1">
+              {#each checklistOf(t) as item, i}
+                <li class="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    class="checkbox checkbox-sm"
+                    checked={item.done}
+                    onchange={() => doToggleChecklist(t, i)}
+                    aria-label={item.text}
+                  />
+                  <span class="text-sm {item.done ? 'line-through opacity-60' : ''}">{item.text}</span>
+                </li>
+              {/each}
+            </ul>
+          {:else}
+            <p class="mb-1 text-xs font-bold opacity-70">چک‌لیست</p>
+          {/if}
+          <div class="mt-2 flex gap-2">
+            <input
+              class="input input-sm input-bordered input-sclack min-w-0 flex-1 bg-base-100"
+              placeholder="مورد تازهٔ چک‌لیست"
+              value={checklistDrafts[t.id] || ''}
+              oninput={(e) =>
+                (checklistDrafts = { ...checklistDrafts, [t.id]: e.currentTarget.value })}
+              onkeydown={(e) => {
+                if (e.key === 'Enter') doAddChecklistItem(t)
+              }}
+            />
+            <button class="btn btn-sm btn-outline" onclick={() => doAddChecklistItem(t)}>
+              + مورد
+            </button>
+          </div>
+        </div>
         <div class="mt-1">
           <button
             class="btn btn-ghost btn-xs"
@@ -533,6 +630,23 @@
               {#if editError}
                 <p class="text-xs text-error">{editError}</p>
               {/if}
+              <div class="flex flex-wrap gap-2">
+                <label class="flex items-center text-sm opacity-70" for="edit-parent-{t.id}">
+                  کار والد (زیروظیفه)
+                </label>
+                <select
+                  id="edit-parent-{t.id}"
+                  class="select select-bordered input-sclack min-w-0 flex-1 bg-base-100"
+                  bind:value={editParentId}
+                  disabled={editBusy}
+                  data-edit-parent
+                >
+                  <option value="">بدون والد — کار در ریشه</option>
+                  {#each taskParentOptions(ws.tasks, t.id) as p (p.id)}
+                    <option value={p.id}>{p.title}</option>
+                  {/each}
+                </select>
+              </div>
               <div class="flex flex-col gap-2 sm:flex-row">
                 <button
                   class="btn btn-sclack btn-primary w-full sm:flex-1"
@@ -547,6 +661,17 @@
               </div>
             </div>
           </div>
+        {/if}
+        {#if t.children?.length}
+          <!-- Phase 8: زیروظیفه‌ها زیر والدشان، با تورفتگی. -->
+          <ul
+            class="mt-2 flex flex-col gap-2 border-s-2 border-[var(--line)] ps-3"
+            data-task-children={t.id}
+          >
+            {#each t.children as child (child.id)}
+              {@render taskRow(child)}
+            {/each}
+          </ul>
         {/if}
       </div>
     </li>
@@ -584,6 +709,30 @@
   >
     <h1 class="text-2xl font-bold">کارها</h1>
     <p class="mt-1 text-sm opacity-70">دفتر برنامه‌ریزی — کارها و یادآوری‌های پروژهٔ جاری بر اساس زمان و تاریخ.</p>
+
+    <div class="mt-3 flex flex-wrap items-center gap-2">
+      <div class="join" role="group" aria-label="نمای کارها">
+        <button
+          type="button"
+          class="btn btn-sm join-item {viewMode === 'list' ? 'btn-primary' : 'btn-outline'}"
+          data-view="list"
+          aria-pressed={viewMode === 'list'}
+          onclick={() => (viewMode = 'list')}
+        >
+          فهرست
+        </button>
+        <button
+          type="button"
+          class="btn btn-sm join-item {viewMode === 'kanban' ? 'btn-primary' : 'btn-outline'}"
+          data-view="kanban"
+          aria-pressed={viewMode === 'kanban'}
+          onclick={() => (viewMode = 'kanban')}
+        >
+          کانبان
+        </button>
+      </div>
+      <a href="#/budget" class="btn btn-ghost btn-sm">بودجه و زمان‌بندی</a>
+    </div>
 
     <div class="mt-6">
       <SearchBox />
@@ -751,7 +900,7 @@
             <p class="mt-3 text-sm opacity-60">در این روز کاری نیست.</p>
           {:else}
             <ul class="mt-3 flex flex-col gap-2">
-              {#each calDayTasks as t (t.id)}
+              {#each calDayTree as t (t.id)}
                 {@render taskRow(t)}
               {/each}
             </ul>
@@ -869,9 +1018,30 @@
               {/if}
             {/if}
           </p>
+        {:else if showKanban}
+          <!-- Phase 8: کانبان — سه ستون وضعیت؛ جابه‌جایی با تپ روی
+               دکمهٔ وضعیت هر کارت (D9 الف). زیروظیفه‌ها زیر والدشان
+               می‌مانند، هرچند وضعیتشان با والد فرق کند. -->
+          <div class="mt-3 grid gap-3 md:grid-cols-3" data-kanban>
+            {#each TASK_STATUSES as st}
+              <section
+                class="rounded-xl border border-[var(--line)] bg-base-100 p-3"
+                data-kanban-column={st}
+              >
+                <h3 class="mb-2 text-sm font-bold">
+                  {TASK_STATUS_LABEL[st]} ({taskTree.filter((t) => t.status === st).length})
+                </h3>
+                <ul class="flex flex-col gap-2">
+                  {#each taskTree.filter((t) => t.status === st) as t (t.id)}
+                    {@render taskRow(t)}
+                  {/each}
+                </ul>
+              </section>
+            {/each}
+          </div>
         {:else}
           <ul class="mt-3 flex flex-col gap-2">
-            {#each menuData.tasks as t (t.id)}
+            {#each taskTree as t (t.id)}
               {@render taskRow(t)}
             {/each}
           </ul>
@@ -895,7 +1065,7 @@
           <div class="card-body">
             <p class="text-sm opacity-70">هنوز قالبی نیست.</p>
             <button class="btn btn-sclack btn-outline" onclick={doSeedTemplates} disabled={seeding}>
-              ساختن ۴ قالب آماده
+              ساختن ۷ قالب آماده
             </button>
           </div>
         </div>
@@ -908,7 +1078,10 @@
                 <p class="text-sm opacity-70">
                   {t.structure?.kind === 'project'
                     ? 'یک پروژهٔ تازه با اتاق «گفت‌وگو» و سند یادداشت جلسه می‌سازد.'
-                    : 'یک سند تازه با همین ساختار در پروژهٔ جاری می‌سازد.'}
+                    : t.structure?.kind === 'task'
+                      ? 'یک کار تازه با همین ساختار در پروژهٔ جاری می‌سازد.' +
+                        (t.structure?.description ? ' ' + t.structure.description : '')
+                      : 'یک سند تازه با همین ساختار در پروژهٔ جاری می‌سازد.'}
                 </p>
                 {#if t.structure?.kind === 'project'}
                   <input

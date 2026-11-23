@@ -13,7 +13,8 @@ import { JSDOM, VirtualConsole } from 'jsdom'
 import { readFileSync, readdirSync } from 'node:fs'
 import { countRooyeshFields, formCompletion, validateFormPercents, emptyFormAnswers, FORM_ROOYESH_46 } from '../src/lib/form-rooyesh.js'
 import { RULES_55, countRules, rulesByChapter, rulesForSection, unmappedRules } from '../src/lib/rules-aim.js'
-import { computeBudget, computeBurndown, computeGantt, GRANT_RIALLS } from '../src/lib/extract.js'
+import { computeBudget, computeBurndown, computeGantt, GRANT_RIALLS, buildTaskTree, taskAncestors, validateTaskParent, taskParentOptions } from '../src/lib/extract.js'
+import { BUILTIN_TEMPLATES } from '../src/lib/templates.js'
 
 const BASE_URL = 'https://probe-ref.supabase.co'
 const USER_ID = '11111111-1111-1111-1111-111111111111'
@@ -555,6 +556,154 @@ async function main() {
       w.document.body.textContent.includes('کار بدون مهلت'))
     const realErrors = m.errors.filter((e) => !/websocket|realtime/i.test(e))
     check('phase 7: 0 non-Realtime JS errors on the mount', realErrors.length === 0, JSON.stringify(realErrors.slice(0, 3)))
+    m.dom.window.close()
+  }
+
+  // ---------- phase 8: kanban + subtasks + checklist + task templates ----------
+  section('phase 8 pure: task tree + templates')
+  check('phase 8 pure: buildTaskTree nests children, missing parent becomes a root', (() => {
+    const tree = buildTaskTree([
+      { id: 'a', title: 'الف', parent_id: null },
+      { id: 'b', title: 'ب', parent_id: 'a' },
+      { id: 'c', title: 'ج', parent_id: 'b' },
+      { id: 'd', title: 'د', parent_id: 'missing' }
+    ])
+    return tree.map((t) => t.id).join(',') === 'a,d' &&
+      tree[0].children.map((t) => t.id).join(',') === 'b' &&
+      tree[0].children[0].children.map((t) => t.id).join(',') === 'c'
+  })())
+  check('phase 8 pure: taskAncestors walks up root-first', (() => {
+    const tasks = [
+      { id: 'a', parent_id: null },
+      { id: 'b', parent_id: 'a' },
+      { id: 'c', parent_id: 'b' }
+    ]
+    return taskAncestors(tasks, 'c').map((t) => t.id).join(',') === 'a,b'
+  })())
+  check('phase 8 pure: validateTaskParent blocks self + descendant, allows the rest', (() => {
+    const tasks = [
+      { id: 'a', parent_id: null },
+      { id: 'b', parent_id: 'a' },
+      { id: 'c', parent_id: 'b' }
+    ]
+    return validateTaskParent(tasks, 'a', 'a') === 'کار نمی‌تواند زیرِ خودش باشد.' &&
+      validateTaskParent(tasks, 'a', 'c') === 'این کار زیرمجموعهٔ کارِ فعلی است؛ چرخه ساخته نمی‌شود.' &&
+      validateTaskParent(tasks, 'c', 'a') === null &&
+      validateTaskParent(tasks, 'c', null) === null
+  })())
+  check('phase 8 pure: taskParentOptions excludes self + descendants', (() => {
+    const tasks = [
+      { id: 'a', parent_id: null },
+      { id: 'b', parent_id: 'a' },
+      { id: 'c', parent_id: 'b' },
+      { id: 'd', parent_id: null }
+    ]
+    return taskParentOptions(tasks, 'a').map((t) => t.id).join(',') === 'd'
+  })())
+  check('phase 8 pure: 7 built-in templates (4 old + 3 task)', (() => {
+    const kinds = BUILTIN_TEMPLATES.map((t) => t.structure?.kind).join(',')
+    return BUILTIN_TEMPLATES.length === 7 && kinds === 'doc,doc,doc,project,task,task,task'
+  })())
+  check('phase 8 pure: task templates carry checklist / dueInDays', (() => {
+    const byName = Object.fromEntries(BUILTIN_TEMPLATES.map((t) => [t.name, t.structure]))
+    return byName['کار با چک‌لیست'].checklist.length === 3 &&
+      byName['کار با مهلت یک هفته‌ای'].dueInDays === 7 &&
+      typeof byName['زیروظیفهٔ مرحله'].description === 'string'
+  })())
+
+  section('phase 8 DOM: tree + checklist + kanban + parent picker + task template')
+  {
+    const db = makeDb()
+    const stub = makeStub(db)
+    const now = new Date().toISOString()
+    db.tasks.push(
+      { id: 't6', project_id: PROJECT_ID, title: 'کار والد', status: 'todo', created_by: MEMBER_ID, created_at: now, updated_at: now, due_at: null, completed_at: null, custom_fields: {}, parent_id: null },
+      { id: 't7', project_id: PROJECT_ID, title: 'زیروظیفهٔ یک', status: 'todo', created_by: MEMBER_ID, created_at: now, updated_at: now, due_at: null, completed_at: null, custom_fields: {}, parent_id: 't6' },
+      { id: 't8', project_id: PROJECT_ID, title: 'کار با چک‌لیست', status: 'todo', created_by: MEMBER_ID, created_at: now, updated_at: now, due_at: null, completed_at: null, custom_fields: { checklist: [{ text: 'الف', done: true }, { text: 'ب', done: false }] }, parent_id: null }
+    )
+    const m = await mountApp({ html, js }, stub, '#/tasks')
+    const { w } = m
+    await waitFor(w, () => w.document.querySelector('[data-menu="due"]'), 10000, 'planner menus')
+    // The 'due' menu lists every open task (dated first, then undated).
+    w.document.querySelector('[data-menu="due"]').click()
+    await waitFor(w, () => w.document.querySelector('[data-task-row="t6"]'), 10000, 'parent task row')
+
+    check('phase 8: child renders nested under its parent (data-task-children)',
+      !!w.document.querySelector('[data-task-children="t6"]') &&
+      w.document.querySelector('[data-task-children="t6"]')?.textContent.includes('زیروظیفهٔ یک'))
+    check('phase 8: child row carries its parent id',
+      w.document.querySelector('[data-task-row="t7"]')?.getAttribute('data-task-parent') === 't6')
+    check('phase 8: checklist shows 1 of 2 done',
+      w.document.querySelector('[data-checklist="t8"]')?.textContent.includes('۱ از ۲') === true)
+
+    // Toggle the second checklist item → db flips it to done.
+    const t8box = w.document.querySelector('[data-checklist="t8"] input[type="checkbox"]:nth-of-type(2)') ||
+      [...w.document.querySelectorAll('[data-checklist="t8"] input[type="checkbox"]')][1]
+    t8box.click()
+    await waitFor(w, () => db.tasks.find((t) => t.id === 't8')?.custom_fields?.checklist?.[1]?.done === true, 10000, 'checklist item toggled in db')
+    check('phase 8: ticking a checklist item saves it to the task row',
+      db.tasks.find((t) => t.id === 't8').custom_fields.checklist[1].done === true)
+    check('phase 8: checklist count moves to 2 of 2',
+      w.document.querySelector('[data-checklist="t8"]')?.textContent.includes('۲ از ۲') === true)
+
+    // Kanban: switch view → 3 columns; tap the status button on a todo
+    // card → it cycles to doing and moves columns (D9, tap not drag).
+    w.document.querySelector('[data-view="kanban"]').click()
+    await waitFor(w, () => w.document.querySelector('[data-kanban]'), 10000, 'kanban grid')
+    check('phase 8: kanban has 3 status columns',
+      ['todo', 'doing', 'done'].every((s) => !!w.document.querySelector('[data-kanban-column="' + s + '"]')))
+    check('phase 8: todo column holds the parent task',
+      w.document.querySelector('[data-kanban-column="todo"]')?.textContent.includes('کار والد') === true)
+    const t1statusBtn = w.document.querySelector('[data-task-row="t1"] button')
+    t1statusBtn.click()
+    await waitFor(w, () => db.tasks.find((t) => t.id === 't1')?.status === 'doing', 10000, 't1 cycled to doing in db')
+    await waitFor(w, () => w.document.querySelector('[data-kanban-column="doing"]')?.textContent.includes('کار باز یک'), 10000, 't1 moved to the doing column')
+    check('phase 8: tapping a card status button moves it to the next column',
+      db.tasks.find((t) => t.id === 't1').status === 'doing' &&
+      w.document.querySelector('[data-kanban-column="doing"]')?.textContent.includes('کار باز یک'))
+
+    // Cycle guard in the picker — checked BEFORE re-parenting t7 away:
+    // while t7 is still under t6, editing t6 must NOT offer t7.
+    w.document.querySelector('[data-task-row="t6"] .task-edit-btn').click()
+    const editForm6 = await waitFor(w, () => w.document.querySelector('[data-edit-form="t6"]'), 10000, 'edit form for t6')
+    const parentSelect6 = editForm6.querySelector('[data-edit-parent]')
+    check('phase 8: parent picker for t6 excludes its descendant t7 (cycle guard)',
+      ![...parentSelect6.querySelectorAll('option')].some((o) => o.value === 't7'))
+
+    // Back to list; open the edit form on the child → parent picker
+    // lists other tasks but NOT the child's own descendant (none here)
+    // and re-parenting to t1 saves.
+    w.document.querySelector('[data-view="list"]').click()
+    await waitFor(w, () => !w.document.querySelector('[data-kanban]'), 10000, 'back to list')
+    w.document.querySelector('[data-task-row="t7"] .task-edit-btn').click()
+    const editForm = await waitFor(w, () => w.document.querySelector('[data-edit-form="t7"]'), 10000, 'edit form for t7')
+    const parentSelect = editForm.querySelector('[data-edit-parent]')
+    check('phase 8: parent picker shows the current parent (کار والد)',
+      parentSelect?.value === 't6')
+    check('phase 8: parent picker excludes the task itself',
+      ![...parentSelect.querySelectorAll('option')].some((o) => o.value === 't7'))
+    setSelect(w, parentSelect, 't1')
+    editForm.querySelector('button.btn-primary').click()
+    await waitFor(w, () => db.tasks.find((t) => t.id === 't7')?.parent_id === 't1', 10000, 't7 re-parented to t1 in db')
+    check('phase 8: saving the edit re-parents the child (t7 → t1)',
+      db.tasks.find((t) => t.id === 't7').parent_id === 't1')
+
+    // Task template: seed the 7 templates, then create from the
+    // checklist template → a task with 3 checklist items.
+    const seedBtn = await waitFor(w, () => [...w.document.querySelectorAll('button')].find((b) => b.textContent.includes('ساختن ۷ قالب آماده')), 10000, 'seed templates button')
+    seedBtn.click()
+    await waitFor(w, () => db.templates.length === 7, 10000, '7 templates seeded')
+    check('phase 8: seeding creates 7 templates (4 old + 3 task)',
+      db.templates.length === 7)
+    const checklistCard = [...w.document.querySelectorAll('h3')].find((h) => h.textContent.trim() === 'کار با چک‌لیست')?.closest('.card')
+    checklistCard.querySelector('button.btn-primary').click()
+    const templated = await waitFor(w, () => db.tasks.find((t) => t.title === 'کار با چک‌لیست' && t.id !== 't8'), 10000, 'templated task in db')
+    await waitFor(w, () => (db.tasks.find((t) => t.id === templated.id)?.custom_fields?.checklist || []).length === 3, 10000, 'templated checklist saved')
+    check('phase 8: task template creates a task with its 3-item checklist',
+      (db.tasks.find((t) => t.id === templated.id)?.custom_fields?.checklist || []).length === 3)
+
+    const realErrors = m.errors.filter((e) => !/websocket|realtime/i.test(e))
+    check('phase 8: 0 non-Realtime JS errors on the mount', realErrors.length === 0, JSON.stringify(realErrors.slice(0, 3)))
     m.dom.window.close()
   }
 

@@ -1333,3 +1333,91 @@ export function computeGantt(tasks, startIso, endIso) {
     endLabel: end.toISOString().slice(0, 10)
   }
 }
+
+// ---------- فاز ۸: درخت کارها (زیروظیفه) — آینهٔ توابع درخت سند ----------
+export function buildTaskTree(tasks) {
+  const list = tasks || []
+  const byId = new Map(list.map((t) => [t.id, t]))
+  const nodes = new Map(list.map((t) => [t.id, { ...t, children: [] }]))
+  const roots = []
+  for (const t of list) {
+    const node = nodes.get(t.id)
+    const pid = t.parent_id || null
+    // والد قابل‌استفاده: هست، خود کار نیست، و چرخه نمی‌بندد. والدی که
+    // در همین فهرست نیست (مثلاً در منوی برنامه‌ریز فیلتر شده) یعنی
+    // کار در این نما ریشه حساب می‌شود — نه گم‌شده.
+    let ok = false
+    if (pid && pid !== t.id && byId.has(pid)) {
+      ok = true
+      const seen = new Set([t.id])
+      let cur = pid
+      while (cur) {
+        if (seen.has(cur)) {
+          ok = false
+          break
+        }
+        seen.add(cur)
+        const up = byId.get(cur)
+        cur = up ? up.parent_id || null : null
+      }
+    }
+    if (ok) nodes.get(pid).children.push(node)
+    else roots.push(node)
+  }
+  return roots
+}
+
+// اجداد کار، از ریشه (خود کار بیرون است). ضدچرخه.
+export function taskAncestors(tasks, taskId) {
+  const byId = new Map((tasks || []).map((t) => [t.id, t]))
+  const out = []
+  const seen = new Set([taskId])
+  let cur = byId.get(taskId)
+  while (cur && cur.parent_id) {
+    const pid = cur.parent_id
+    if (seen.has(pid)) break
+    seen.add(pid)
+    const up = byId.get(pid)
+    if (!up) break
+    out.unshift(up)
+    cur = up
+  }
+  return out
+}
+
+// True وقتی taskId خود ancestorId است یا زیر آن نشسته است. ضدچرخه.
+export function isTaskDescendantOf(tasks, taskId, ancestorId) {
+  if (taskId === ancestorId) return true
+  const byId = new Map((tasks || []).map((t) => [t.id, t]))
+  const seen = new Set([taskId])
+  let cur = byId.get(taskId)
+  while (cur && cur.parent_id) {
+    const pid = cur.parent_id
+    if (pid === ancestorId) return true
+    if (seen.has(pid)) break
+    seen.add(pid)
+    cur = byId.get(pid)
+  }
+  return false
+}
+
+// اعتبارسنجی والد تازه (null = برگرداندن به ریشه).
+// پیام روشن فارسی برمی‌گرداند، یا null وقتی جابه‌جایی مجاز است.
+export function validateTaskParent(tasks, taskId, newParentId) {
+  if (!newParentId) return null
+  if (newParentId === taskId) return 'کار نمی‌تواند زیرِ خودش باشد.'
+  const list = tasks || []
+  const parent = list.find((t) => t.id === newParentId)
+  if (!parent) return 'کار والد پیدا نشد.'
+  if (isTaskDescendantOf(list, newParentId, taskId)) {
+    return 'این کار زیرمجموعهٔ کارِ فعلی است؛ چرخه ساخته نمی‌شود.'
+  }
+  return null
+}
+
+// گزینه‌های والد برای انتخاب‌گر: همهٔ کارها به‌جز خود کار و فرزندانش.
+export function taskParentOptions(tasks, taskId) {
+  return (tasks || []).filter(
+    (t) => t.id !== taskId && !isTaskDescendantOf(tasks, t.id, taskId)
+  )
+}
