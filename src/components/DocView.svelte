@@ -16,6 +16,8 @@
   import { docAncestors, moveParentOptions } from '../lib/extract.js'
   import { createYDoc, connectBroadcast, bindTextarea, applyDocState } from '../lib/yjs-sync.js'
   import { renderMdLite, insertMdSnippet } from '../lib/md-lite.js'
+  import { isStarred, toggleStarred } from '../lib/starred.js'
+  import { openDocTab } from '../lib/tabs.js'
   import { tick } from 'svelte'
   import FileList from './FileList.svelte'
   import VersionsPanel from './VersionsPanel.svelte'
@@ -191,6 +193,8 @@
     ytext = text
     await loadRowStateInto(docRow, ydoc)
     lastSavedB64 = null
+    // D-UX6: بازکردن سند، تب آن را می‌سازد/فعال می‌کند (با عنوان واقعی).
+    openDocTab(docRow.id, docRow.title)
     // If this doc belongs to another project than the one selected (deep
     // link / reload on #/doc/...), sync the workspace to the doc's project
     // so the sidebar lists and file list show this project's rows.
@@ -358,6 +362,16 @@
     }
   }
 
+  // ستارهٔ سند (D-UX5): تپ → علاقه‌مندی؛ تپ دوباره → برمی‌گردد.
+  async function doToggleDocStar() {
+    if (!docRow) return
+    try {
+      docRow = await toggleStarred('docs', docRow)
+    } catch (e) {
+      loadError = 'ستاره ناموفق بود: ' + (e.message || String(e))
+    }
+  }
+
   function fmtTime(iso) {
     try {
       return new Date(iso).toLocaleDateString('fa-IR', {
@@ -382,18 +396,35 @@
         <a href="#/" class="btn btn-ghost btn-sm mt-4">بازگشت به خانه</a>
       </div>
     {:else if docRow}
-      <header class="border-b border-base-300 px-4 py-3">
+      <header class="doc-page border-b border-base-300 px-4 py-3">
         <!-- Phase 5: breadcrumb — the parent chain up to this doc. -->
         {#if ancestors.length > 0}
           <nav class="doc-breadcrumb mb-1 text-xs" data-doc-breadcrumb aria-label="مسیر سند">
             {#each ancestors as a}
               <a href="#/doc/{a.id}" class="doc-breadcrumb-link">{a.title}</a>
-              <span aria-hidden="true"> / </span>
+              <span aria-hidden="true"> ‹ </span>
             {/each}
             <span aria-current="page">{docRow.title}</span>
           </nav>
         {/if}
-        <h1 class="text-lg font-bold">{docRow.title}</h1>
+        <div class="flex items-center gap-2">
+          <h1 class="min-w-0 flex-1 truncate text-lg font-bold">{docRow.title}</h1>
+          {#if docRow.visibility === 'personal'}
+            <span class="badge badge-sm search-match-badge shrink-0">خصوصی — فقط شما</span>
+          {/if}
+          <button
+            type="button"
+            class="btn btn-ghost btn-sm shrink-0 {isStarred(docRow) ? 'text-jigari' : ''}"
+            data-doc-star
+            aria-pressed={isStarred(docRow)}
+            aria-label={isStarred(docRow)
+              ? 'برداشتن «' + docRow.title + '» از علاقه‌مندی‌ها'
+              : 'افزودن «' + docRow.title + '» به علاقه‌مندی‌ها'}
+            onclick={doToggleDocStar}
+          >
+            {isStarred(docRow) ? '★' : '☆'}
+          </button>
+        </div>
         <!-- Phase 4 (faz4 spec §1): joined read/edit toggle, read active
              by default; min 44px touch target, aria-pressed. -->
         <div class="doc-mode-toggle join mt-2" data-mode-toggle role="group" aria-label="حالت نمایش سند">
@@ -486,7 +517,7 @@
         </div>
       </header>
       {#if mode === 'read'}
-        <div class="doc-fade min-h-0 flex-1 px-4 py-3">
+        <div class="doc-fade doc-page min-h-0 flex-1 px-4 py-3">
           {#if renderedHtml}
             <div class="doc-read" data-doc-read>{@html renderedHtml}</div>
           {:else}
@@ -496,7 +527,7 @@
           {/if}
         </div>
       {:else}
-        <div class="doc-fade min-h-0 flex-1 px-4 py-3">
+        <div class="doc-fade doc-page min-h-0 flex-1 px-4 py-3">
           <!-- Phase 4 toolbar (faz4 spec §5): text labels, not icons
                only; after insert, focus returns to the textarea. -->
           <div class="doc-toolbar mb-2" role="toolbar" aria-label="ابزار ویرایش سند">

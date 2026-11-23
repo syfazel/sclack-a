@@ -42,15 +42,15 @@
 
 <!-- G1 — ورود/لندینگ: صحنهٔ زندهٔ Three.js پشت کارت شیشه‌ای ورود.
      HeroScene با import() پویا لود می‌شود (three در باندل اولیه نیست)؛
-     اگر چانک نرسید، مش گرم + لوگو می‌نشیند و صفحه خالی نمی‌ماند. -->
+     اگر چانک نرسید، مش روشن + لوگو می‌نشیند و صفحه خالی نمی‌ماند. -->
 <div class="relative flex min-h-screen items-center justify-center px-4 py-10">
   <div class="absolute inset-0">
     {#await import('./HeroScene.svelte')}
-      <div class="warm-mesh absolute inset-0"></div>
+      <div class="light-mesh absolute inset-0"></div>
     {:then { default: HeroScene }}
       <HeroScene variant="landing" onlineCount={4} />
     {:catch}
-      <div class="warm-mesh absolute inset-0 flex items-center justify-center">
+      <div class="light-mesh absolute inset-0 flex items-center justify-center">
         <LogoMark class="h-16 w-32 opacity-90" />
       </div>
     {/await}

@@ -1,13 +1,15 @@
 <script>
   import { onMount, flushSync } from 'svelte'
-  import { auth, ws, notif, pulse } from './lib/store.svelte.js'
+  import { auth, ws, notif, pulse, displayPrefs } from './lib/store.svelte.js'
   import { sb, isConfigured } from './lib/supabase.js'
   import { ensureMember, handleAuthEvent, stashSession } from './lib/auth.js'
   import { loadWorkspace, loadProjectData } from './lib/data.js'
   import { unsubscribeRoom } from './lib/chat.js'
   import { refreshUnreadCount } from './lib/notifications.js'
+  import { openDocTab, reopenClosedTab, restoreDocTabs } from './lib/tabs.js'
   import Login from './components/Login.svelte'
   import Sidebar from './components/Sidebar.svelte'
+  import DocTabs from './components/DocTabs.svelte'
   import HomeView from './components/HomeView.svelte'
   import RoomsView from './components/RoomsView.svelte'
   import ChatView from './components/ChatView.svelte'
@@ -57,6 +59,11 @@
   // project, e.g. after reload on #/room/..., left the sidebar lists
   // showing the previous project's rows).
   $effect(() => {
+    if (route.name === 'doc') {
+      // D-UX6: opening a doc opens (or activates) its tab.
+      const known = ws.docs.find((d) => d.id === route.docId)
+      openDocTab(route.docId, known?.title || 'سند')
+    }
     if (route.name === 'room') {
       ws.currentRoomId = route.roomId
       const r = ws.rooms.find((x) => x.id === route.roomId)
@@ -124,6 +131,30 @@
 
   onMount(() => {
     window.addEventListener('hashchange', onHashChange)
+    restoreDocTabs()
+    // میان‌برهای سراسری (D-UX6 + تحقیق: با کلید فیزیکی بسته می‌شوند،
+    // event.code — نه نویسه — تا در چیدمان فارسی هم کار کنند).
+    const onKey = (e) => {
+      if (!e.ctrlKey && !e.metaKey) return
+      if (e.code === 'KeyK') {
+        e.preventDefault()
+        document.querySelector('[data-global-search]')?.focus()
+      } else if (e.code === 'KeyT' && route.name === 'doc') {
+        if (e.shiftKey) {
+          e.preventDefault()
+          const id = reopenClosedTab()
+          if (id) location.hash = '#/doc/' + id
+        } else {
+          // تب تازه از همان صفحه‌ای که روی آن هستی (مثل نوشن).
+          e.preventDefault()
+          openDocTab(route.docId, ws.docs.find((d) => d.id === route.docId)?.title || 'سند')
+        }
+      } else if (e.code === 'Backslash') {
+        e.preventDefault()
+        displayPrefs.sidebarHidden = !displayPrefs.sidebarHidden
+      }
+    }
+    window.addEventListener('keydown', onKey)
     let authSub = null
     ;(async () => {
       if (!isConfigured) {
@@ -151,6 +182,7 @@
     })()
     return () => {
       window.removeEventListener('hashchange', onHashChange)
+      window.removeEventListener('keydown', onKey)
       if (authSub) authSub.subscription.unsubscribe()
     }
   })
@@ -164,11 +196,25 @@
   <Login />
 {:else}
   <div class="flex h-dvh bg-base-100">
-    <div class="hidden shrink-0 md:block">
-      <Sidebar />
-    </div>
+    {#if !displayPrefs.sidebarHidden}
+      <div class="hidden shrink-0 md:block">
+        <Sidebar />
+      </div>
+    {/if}
 
     <main class="min-w-0 flex-1 pb-16 md:pb-0">
+      {#if displayPrefs.sidebarHidden}
+        <button
+          class="btn btn-ghost btn-sm m-2"
+          onclick={() => (displayPrefs.sidebarHidden = false)}
+          title="نمایش سایدبار (Ctrl+\)"
+        >
+          ☰ سایدبار
+        </button>
+      {/if}
+      {#if ws.docTabs.length > 0}
+        <DocTabs currentDocId={route.name === 'doc' ? route.docId : null} />
+      {/if}
       {#if ws.error}
         <div class="alert alert-error m-4" role="alert"><span>{ws.error}</span></div>
       {/if}
@@ -193,7 +239,7 @@
   </div>
 
   <!-- Mobile bottom nav (4 destinations, touch targets ≥ 44px) — G4: کروم شیشه‌ای -->
-  <nav class="glass-chrome fixed inset-x-0 bottom-0 z-10 flex md:hidden" data-bottom-nav>
+  <nav class="glass-mild fixed inset-x-0 bottom-0 z-10 flex md:hidden" data-bottom-nav>
     <a
       href="#/"
       class="flex min-h-11 flex-1 flex-col items-center justify-center py-2 text-xs {route.name ===

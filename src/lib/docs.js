@@ -65,6 +65,48 @@ export async function createDoc(projectId, title) {
   return data
 }
 
+// ---------- یادداشت خصوصی (بخش خصوصی سایدبار، D-UX5 الف) ----------
+// visibility='personal': سیاست RLS ‏w1 docs select فقط سازنده را
+// می‌بیند (visibility در team/project نیست و created_by = من) — پس
+// یادداشت خصوصی در سطح دیتابیس هم فقط مال من است، نه فقط در UI.
+// یادداشت خصوصی project_id هم دارد (پروژهٔ جاری در زمان ساخت) ولی
+// در درخت سندهای پروژه نشان داده نمی‌شود؛ فقط در بخش خصوصی می‌آید.
+export async function createPrivateDoc(projectId, title) {
+  const clean = (title || '').trim()
+  if (!clean) throw new Error('نام یادداشت را بنویسید.')
+  if (!auth.member) throw new Error('ردیف عضو هنوز ساخته نشده است.')
+  const { data, error } = await sb
+    .from('docs')
+    .insert({
+      project_id: projectId || null,
+      title: clean,
+      yjs_doc_id: newYjsDocId(projectId || 'private'),
+      created_by: auth.member.id,
+      visibility: 'personal'
+    })
+    .select()
+    .single()
+  if (error) throw error
+  await loadPrivateDocs()
+  return data
+}
+
+// یادداشت‌های خصوصیِ من، در همهٔ پروژه‌ها (نه فقط پروژهٔ جاری).
+export async function loadPrivateDocs() {
+  if (!sb || !auth.member) {
+    ws.privateDocs = []
+    return
+  }
+  const { data, error } = await sb
+    .from('docs')
+    .select('*')
+    .eq('created_by', auth.member.id)
+    .eq('visibility', 'personal')
+    .order('created_at')
+  if (!error) ws.privateDocs = data || []
+  else ws.error = error.message
+}
+
 // The auto doc created with every new project (alongside the auto room).
 export async function createAutoDoc(projectId) {
   const { data, error } = await sb

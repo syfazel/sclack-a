@@ -77,8 +77,8 @@ async function unitTests() {
     Math.abs(g.CAMERA_VIEWS.top.phi - 0.34) < 1e-9)
   check('S5 unit: top view looks down from above (y > z)',
     g.CAMERA_VIEWS.top.position[1] > g.CAMERA_VIEWS.top.position[2])
-  check('S5 unit: 4 logo dots, amber -> coral',
-    g.LOGO_DOTS.length === 4 && g.LOGO_DOTS[0].color === '#D97706' && g.LOGO_DOTS[3].color === '#F97066')
+  check('S5 unit: 4 logo dots, light gray -> jigari (0.12.0)',
+    g.LOGO_DOTS.length === 4 && g.LOGO_DOTS[0].color === '#D1D5DB' && g.LOGO_DOTS[3].color === '#7F1D1D')
 
   // resolveGraphicsPrefs
   const desktop = g.resolveGraphicsPrefs({ isTouch: false, prefersReducedMotion: false, webgl2: true })
@@ -484,17 +484,16 @@ async function main() {
     woff2.length === 3, JSON.stringify(woff2))
   check('S5 bundle: CSS has @font-face Vazirmatn, no Google Fonts',
     css.includes('@font-face') && css.includes('Vazirmatn') && !css.includes('googleapis'))
-  check('S5 bundle: CSS has the glass + warm-mesh rules',
-    css.includes('glass-card') && css.includes('glass-chrome') && css.includes('warm-mesh'))
+  check('S5 bundle: CSS has the glass + light-mesh rules (0.12.0)',
+    css.includes('glass-card') && css.includes('glass-mild') && css.includes('light-mesh'))
   check('S5 bundle: index.html has no Google Fonts link',
     !html.includes('googleapis'))
-  check('S5 bundle: CSS carries the locked R3 tokens',
-    css.includes('--glass-blur') && css.includes('--ai-accent') && css.includes('#7c3aed'))
-  // Purple only inside the assistant: every CSS occurrence of the
-  // accent must sit in an .ai- rule or the :root token definition.
+  check('S5 bundle: CSS carries the locked 0.12.0 tokens (jigari, glass levels)',
+    css.includes('--jigari') && css.includes('--glass-mild-blur') && css.includes('--jigari-soft'))
+  // 0.12.0: بنفش در پالت تازه هیچ‌جا نیست — اکسنت دستیار هم جیگری است.
   const purpleLines = css.split('}').filter((rule) => rule.includes('#7c3aed') || rule.includes('--ai-accent'))
-  check('S5 bundle: purple (#7c3aed) appears only in .ai- / .btn-ai rules / :root token',
-    purpleLines.length > 0 && purpleLines.every((r) => r.includes('.ai-') || r.includes('.btn-ai') || r.includes(':root')),
+  check('S5 bundle: no purple (#7c3aed / --ai-accent) anywhere in the new palette',
+    purpleLines.length === 0,
     JSON.stringify(purpleLines.map((r) => r.slice(0, 80))))
   // No purple in the sources of the non-assistant views.
   const srcDir = new URL('../src/', import.meta.url).pathname
@@ -511,7 +510,7 @@ async function main() {
   // jsdom cannot run dynamic import() in an eval'd classic script (and
   // it does not execute <script type="module"> at all — verified), so
   // the HeroScene chunk never resolves here: the {#await} blocks stay
-  // on their pending branch (warm mesh). The fallback branch itself is
+  // on their pending branch (light mesh). The fallback branch itself is
   // verified at the source level here and by the create() unit tests
   // (webgl:false -> mode 'fallback'); a real browser resolves the chunk
   // in milliseconds and mounts HeroScene.
@@ -528,8 +527,8 @@ async function main() {
   const w0 = m0.w
   allErrors.push(...m0.errors)
   await waitFor(w0, () => w0.document.body.textContent.includes('ورود به فضای کاری'), 10000, 'login screen')
-  check('S5 login: warm mesh is present behind the card (pending branch — chunk import never settles in jsdom)',
-    !!w0.document.querySelector('.warm-mesh'))
+  check('S5 login: light mesh is present behind the card (pending branch — chunk import never settles in jsdom)',
+    !!w0.document.querySelector('.light-mesh'))
   check('S5 login: login card is glass, not matte',
     !!w0.document.querySelector('.glass-card'))
   check('S5 login: no canvas on the login page (no WebGL in jsdom)',
@@ -551,14 +550,14 @@ async function main() {
     heroText.includes('۱ کار امروز'), heroText)
   check('S5 home: hero shows exactly 1 overdue task (real rows)',
     heroText.includes('عقب‌مانده') && /۱\s*عقب‌مانده/.test(heroText), heroText)
-  check('S5 home: hero band shows the warm mesh while the chunk loads (jsdom: import() never settles)',
-    !!w1.document.querySelector('[data-home-hero] .warm-mesh'))
+  check('S5 home: hero band shows the light mesh while the chunk loads (jsdom: import() never settles)',
+    !!w1.document.querySelector('[data-home-hero] .light-mesh'))
   check('S5 home: project cards are glass with entry animation',
     [...w1.document.querySelectorAll('.glass-card.anim-enter')].length >= 1)
   check('S5 home: review summary cards are glass (G3)',
     [...w1.document.querySelectorAll('section .glass-card')].length >= 6)
-  check('S5 home: sidebar is light glass chrome (G4)',
-    !!w1.document.querySelector('aside.glass-chrome'))
+  check('S5 home: sidebar is light glass mild (G4, 0.12.0)',
+    !!w1.document.querySelector('aside.glass-mild'))
   check('S5 home: presence dot exists in the member seats (G6)',
     [...w1.document.querySelectorAll('aside .rounded-full')].length >= 1)
   check('S5 home: simple-mode toggle button exists in the sidebar',
@@ -587,8 +586,8 @@ async function main() {
   await waitFor(w1, () => w1.document.querySelector('[data-planner-header]'), 10000, 'planner header')
   await waitFor(w1, () => w1.document.querySelectorAll('[data-menu]').length === 8, 10000, '8 planner menus')
   const header = w1.document.querySelector('[data-planner-header]')
-  check('S5 tasks: planner header is sticky glass chrome (G4)',
-    header.classList.contains('sticky') && header.classList.contains('glass-chrome'))
+  check('S5 tasks: planner header is sticky glass mild (G4, 0.12.0)',
+    header.classList.contains('sticky') && header.classList.contains('glass-mild'))
   check('S5 tasks: exactly the 8 planner menus, no more no fewer',
     w1.document.querySelectorAll('[data-menu]').length === 8)
   check('S5 tasks: no canvas on the planner page (G10)',

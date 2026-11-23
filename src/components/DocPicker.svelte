@@ -272,7 +272,7 @@
               type="button"
               id={'doc-picker-opt-' + d.id}
               tabindex="-1"
-              class="doc-picker-item min-h-11 {d.id === linkId ? 'bg-amber-100 font-bold' : ''} {focusIndex === i ? 'bg-base-300' : ''}"
+              class="doc-picker-item min-h-11 {d.id === linkId ? 'bg-jigari-soft font-bold' : ''} {focusIndex === i ? 'bg-base-300' : ''}"
               onfocus={() => (focusIndex = i)}
               onclick={() => pick(d.id)}
             >

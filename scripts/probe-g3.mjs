@@ -656,9 +656,11 @@ async function main() {
     sidebarSrc.includes('w-[72px]') && sidebarSrc.includes('lg:w-[264px]'))
   check('G3 bundle: .ai-card and .ai-btn rules exist in CSS',
     css.includes('.ai-card') && css.includes('.ai-btn'))
+  // 0.12.0: بنفش (#7c3aed / --ai-accent) در پالت تازه هیچ‌جا نیست —
+  // اکسنت دستیار هم جیگری شده است (D-UX3 الف).
   const purpleLines = css.split('}').filter((rule) => rule.includes('#7c3aed') || rule.includes('--ai-accent'))
-  check('G3 bundle: purple (#7c3aed) appears only in .ai- / .btn-ai rules / :root token',
-    purpleLines.length > 0 && purpleLines.every((r) => r.includes('.ai-') || r.includes('.btn-ai') || r.includes(':root')),
+  check('G3 bundle: no purple (#7c3aed / --ai-accent) anywhere in the new palette',
+    purpleLines.length === 0,
     JSON.stringify(purpleLines.map((r) => r.slice(0, 80))))
   check('G3 bundle: no purple token in non-assistant view sources (HomeView uses .ai-card/.ai-btn, not the token)',
     !homeSrc.includes('#7C3AED') && !homeSrc.includes('#7c3aed') && !homeSrc.includes('btn-ai') &&

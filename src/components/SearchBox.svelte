@@ -7,9 +7,10 @@
   let searchError = $state('')
   let partialErrors = $state([])
 
-  // فاز ۳ — نشان هم‌خوانی روی نتیجهٔ سند (مشخصات گرافیکی).
+  // فاز ۳ — نشان هم‌خوانی روی نتیجهٔ سند (مشخصات گرافیکی ۰٫۱۲٫۰:
+  // هر سه نشان با پس‌زمینهٔ جیگری روشن و متن جیگری).
   const MATCH_BADGE = {
-    title: { label: 'در عنوان', cls: 'badge badge-ghost badge-sm', aria: 'هم‌خوانی در عنوان' },
+    title: { label: 'در عنوان', cls: 'badge badge-sm search-match-badge', aria: 'هم‌خوانی در عنوان' },
     text: { label: 'در متن', cls: 'badge badge-sm search-match-badge', aria: 'هم‌خوانی در متن' },
     both: { label: 'در عنوان و متن', cls: 'badge badge-sm search-match-badge', aria: 'هم‌خوانی در عنوان و متن' }
   }
@@ -63,11 +64,12 @@
 </script>
 
 <section>
-  <h2 class="mb-2 text-sm font-bold opacity-70">جست‌وجوی سراسری</h2>
+  <h2 class="mb-2 text-xs font-bold text-ink-soft">جست‌وجوی سراسری</h2>
   <div class="flex gap-2">
     <input
       class="input input-sm input-bordered input-sclack min-w-0 flex-1 bg-base-100"
       placeholder="در پیام، سند، فایل و کار جست‌وجو کنید…"
+      data-global-search
       bind:value={q}
       onkeydown={(e) => {
         if (e.key === 'Enter') doSearch()

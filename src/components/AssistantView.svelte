@@ -420,7 +420,7 @@
 <div class="h-full overflow-y-auto px-4 py-6 md:px-8">
   <div class="ai-panel card bg-base-200">
     <div class="card-body">
-      <div class="ai-head glass-chrome">
+      <div class="ai-head glass-mild">
         <h1 class="ai-title text-2xl font-bold">دستیار میوز</h1>
         <span class="ai-badge">۳۰ دستور</span>
         <button

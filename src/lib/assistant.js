@@ -46,7 +46,7 @@ import {
 
 // «دستیار میوز» — EXTRACTIVE-ONLY by design (no model text generation).
 // Every answer quotes or counts real content; when there is nothing real,
-// the answer is found: false. The purple accent (--ai-accent) lives ONLY
+// the answer is found: false. The jigari accent (--jigari) lives ONLY
 // in the assistant panel.
 
 export async function loadDocText(docId) {

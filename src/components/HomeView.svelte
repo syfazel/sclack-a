@@ -414,11 +414,11 @@
   <section class="relative col-span-1 overflow-hidden rounded-3xl md:col-span-2 lg:col-span-12" data-home-hero data-home-card="greeting">
     <div class="relative h-60">
       {#await import('./HeroScene.svelte')}
-        <div class="warm-mesh absolute inset-0"></div>
+        <div class="light-mesh absolute inset-0"></div>
       {:then { default: HeroScene }}
         <HeroScene variant="home" onlineCount={onlineCount} />
       {:catch}
-        <div class="warm-mesh absolute inset-0"></div>
+        <div class="light-mesh absolute inset-0"></div>
       {/await}
       <div class="absolute inset-0 flex items-center p-5">
         <div class="glass-card px-5 py-4">
@@ -524,7 +524,7 @@
               cy="50"
               r="42"
               fill="none"
-              stroke="var(--amber-dark)"
+              stroke="var(--jigari)"
               stroke-width="10"
               stroke-linecap="round"
               stroke-dasharray="263.9"
@@ -626,7 +626,7 @@
     {/if}
   </section>
 
-  <!-- Card 9: Muse assistant — the ONLY ai-accent card on the home page
+  <!-- Card 9: Muse assistant — the ONLY jigari card on the home page
        (G3-5 layer law). Clicking goes to the assistant view. -->
   <section class="glass-card ai-card col-span-1 p-4 md:col-span-1 lg:col-span-4 lg:col-start-9" data-home-card="assistant">
     <h2 class="text-base font-bold">دستیار میوز</h2>
@@ -691,12 +691,12 @@
           aria-label="نمودار ۷ روزهٔ نبض تیم"
           data-pulse-chart
         >
-          <polygon points={chart.messagesArea} fill="rgba(217,119,6,0.12)" />
+          <polygon points={chart.messagesArea} fill="rgba(127,29,29,0.10)" />
           <polygon points={chart.doneArea} fill="rgba(21,128,61,0.10)" />
           <polyline
             points={chart.messagesPoints}
             fill="none"
-            stroke="#d97706"
+            stroke="#7F1D1D"
             stroke-width="2"
             data-pulse-series="messages"
           />
@@ -712,7 +712,7 @@
           {/each}
         </svg>
         <p class="mt-1 flex gap-4 text-xs opacity-70">
-          <span><span class="inline-block h-2 w-4 bg-[#d97706]"></span> پیام‌ها</span>
+          <span><span class="inline-block h-2 w-4 bg-[#7F1D1D]"></span> پیام‌ها</span>
           <span><span class="inline-block h-2 w-4 bg-[#15803d]"></span> کار تمام‌شده</span>
         </p>
         <table class="mt-2 w-full text-xs" data-pulse-chart-table>

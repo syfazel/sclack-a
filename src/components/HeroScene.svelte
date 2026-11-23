@@ -2,7 +2,7 @@
      ماژول گرافیکی با import() پویا لود می‌شود تا three در باندل
      اولیه نباشد؛ اگر WebGL2 نبود، import شکست خورد،
      prefers-reduced-motion روشن بود یا «حالت ساده» فعال بود،
-     همان لوگوی SVG ایستا + مش گرم می‌نشیند (fallback). -->
+     همان لوگوی SVG ایستا + مش روشن می‌نشیند (fallback). -->
 <script>
   import { onDestroy } from 'svelte'
   import { displayPrefs } from '../lib/store.svelte.js'
@@ -107,13 +107,13 @@
 </script>
 
 <div
-  class="hero-scene warm-mesh relative h-full w-full overflow-hidden"
+  class="hero-scene light-mesh relative h-full w-full overflow-hidden"
   data-hero-scene={variant}
 >
   <div bind:this={containerEl} class="absolute inset-0" data-hero-canvas></div>
 
   {#if mode === 'fallback' || mode === 'loading'}
-    <!-- fallback ایستا (G9): همان لوگو + مش گرم؛ صفحه هرگز خالی نمی‌ماند -->
+    <!-- fallback ایستا (G9): همان لوگو + مش روشن؛ صفحه هرگز خالی نمی‌ماند -->
     <div
       class="absolute inset-0 flex flex-col items-center justify-center gap-3"
       data-hero-fallback

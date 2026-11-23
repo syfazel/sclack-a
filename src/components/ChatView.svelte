@@ -195,7 +195,7 @@
               </div>
             </div>
             {#if replies.length > 0}
-              <ul class="mt-2 flex flex-col gap-2 border-s-2 border-amber-500/60 ps-3">
+              <ul class="mt-2 flex flex-col gap-2 border-s-2 border-red-900/40 ps-3">
                 {#each replies as r (r.id)}
                   {@const rmine = auth.member && r.author_id === auth.member.id}
                   <li class="flex {rmine ? 'justify-start' : 'justify-end'}">

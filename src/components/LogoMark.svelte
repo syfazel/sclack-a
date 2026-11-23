@@ -9,12 +9,12 @@
   <path
     d="M8 25 C 20 25, 22 7, 32 7 S 44 25, 56 25"
     fill="none"
-    stroke="#E8B48A"
+    stroke="#D1D5DB"
     stroke-width="3"
     stroke-linecap="round"
   />
-  <circle cx="8" cy="25" r="5.5" fill="#D97706" />
-  <circle cx="25" cy="11" r="5.5" fill="#E07830" />
-  <circle cx="40" cy="21" r="5.5" fill="#F0705A" />
-  <circle cx="56" cy="25" r="5.5" fill="#F97066" />
+  <circle cx="8" cy="25" r="5.5" fill="#D1D5DB" />
+  <circle cx="25" cy="11" r="5.5" fill="#9CA3AF" />
+  <circle cx="40" cy="21" r="5.5" fill="#6B7280" />
+  <circle cx="56" cy="25" r="5.5" fill="#7F1D1D" />
 </svg>

@@ -21,10 +21,10 @@ export const LIGHT_PARTICLES = 240
 // چهار نقطهٔ لوگو — همان مختصات SVG (viewBox ‏64×32) به فضای سه‌بعدی:
 // x = (px - 32) * 0.1 ، y = (16 - py) * 0.1
 export const LOGO_DOTS = [
-  { x: -2.4, y: -0.9, color: '#D97706' },
-  { x: -0.7, y: 0.5, color: '#E07830' },
-  { x: 0.8, y: -0.5, color: '#F0705A' },
-  { x: 2.4, y: -0.9, color: '#F97066' }
+  { x: -2.4, y: -0.9, color: '#D1D5DB' },
+  { x: -0.7, y: 0.5, color: '#9CA3AF' },
+  { x: 0.8, y: -0.5, color: '#6B7280' },
+  { x: 2.4, y: -0.9, color: '#7F1D1D' }
 ]
 
 // سه نمای دوربین (T2: نمای «از بالا» phi ‏0.34 برای پایداری).
@@ -34,8 +34,8 @@ export const CAMERA_VIEWS = {
   top: { position: [0, 8.48, 3.0], label: 'از بالا', phi: 0.34 }
 }
 
-// رنگ‌های گرم ذره‌ها — از پالت R3، نه سفید خالص.
-const PARTICLE_COLORS = ['#F59E0B', '#FB7185', '#FDBA74', '#FED7AA']
+// رنگ‌های ذره‌ها — خاکستری و جیگری، از پالت تازه.
+const PARTICLE_COLORS = ['#7F1D1D', '#991B1B', '#9CA3AF', '#D1D5DB']
 
 // RNG قطعی (mulberry32) تا هندسهٔ ذره‌ها در پروب تکرارپذیر باشد.
 function mulberry32(seed) {
@@ -193,7 +193,7 @@ export function create(container, props = {}) {
   const curve = new THREE.CatmullRomCurve3(sCurvePoints())
   const tube = new THREE.Mesh(
     new THREE.TubeGeometry(curve, 64, 0.045, 8, false),
-    new THREE.MeshBasicMaterial({ color: '#E8B48A' })
+    new THREE.MeshBasicMaterial({ color: '#D1D5DB' })
   )
   group.add(tube)
 

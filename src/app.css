@@ -5,18 +5,18 @@
   name: "sclack";
   default: true;
   color-scheme: "light";
-  --color-base-100: #fdf8ef;
-  --color-base-200: #f8eedd;
-  --color-base-300: #f0e2c8;
-  --color-base-content: #3f2e1e;
-  --color-primary: #d97706;
-  --color-primary-content: #1c1917; /* G7-5: متن تیره روی کهربایی — کنتراست ≈۵٫۶:۱ (با #fff7ed فقط ≈۳:۱ بود) */
-  --color-secondary: #f97066;
-  --color-secondary-content: #fff5f3;
-  --color-accent: #e07830;
-  --color-accent-content: #fff7ed;
-  --color-neutral: #57534e;
-  --color-neutral-content: #fafaf9;
+  --color-base-100: #ffffff;
+  --color-base-200: #f9fafb;
+  --color-base-300: #f3f4f6;
+  --color-base-content: #111827;
+  --color-primary: #991b1b;
+  --color-primary-content: #ffffff;
+  --color-secondary: #6b7280;
+  --color-secondary-content: #ffffff;
+  --color-accent: #7f1d1d;
+  --color-accent-content: #ffffff;
+  --color-neutral: #374151;
+  --color-neutral-content: #ffffff;
   --color-info: #0284c7;
   --color-success: #15803d;
   --color-warning: #b45309;
@@ -28,6 +28,15 @@
 
 @theme {
   --font-sans: "Vazirmatn", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --color-paper: #ffffff;
+  --color-paper-soft: #f9fafb;
+  --color-surface: #f3f4f6;
+  --color-line: #e5e7eb;
+  --color-ink: #111827;
+  --color-ink-soft: #6b7280;
+  --color-jigari: #7f1d1d;
+  --color-jigari-btn: #991b1b;
+  --color-jigari-soft: #fee2e2;
 }
 
 html,
@@ -36,6 +45,81 @@ body {
   background: var(--color-base-100);
   color: var(--color-base-content);
 }
+
+/* ===== توکن‌های طراحی تازه — سفید / خاکستری / جیگری (بستهٔ گرافیکی ۰٫۱۲٫۰) =====
+   پالت گرم کامل حذف شده است؛ صفر ارجاع به توکن‌های گرم در این فایل می‌ماند. */
+:root {
+  --paper: #ffffff;
+  --paper-soft: #f9fafb;
+  --surface: #f3f4f6;
+  --line: #e5e7eb;
+  --ink: #111827;
+  --ink-soft: #6b7280;
+  --jigari: #7f1d1d; /* red-900 — کنتراست روی سفید ۱۰٫۰۲:۱ (AAA) */
+  --jigari-btn: #991b1b; /* red-800 — پیش‌فرض دکمهٔ اصلی؛ متن سفید روی آن ۸٫۳۱:۱ (AAA) */
+  --jigari-soft: #fee2e2; /* red-100 — پس‌زمینهٔ ردیف فعال، نشان، هایلایت جست‌وجو */
+  --glass-mild-blur: 10px;
+  --glass-mild-tint: rgba(255, 255, 255, 0.65);
+  --glass-strong-blur: 20px;
+  --glass-strong-tint: rgba(255, 255, 255, 0.45);
+  --glass-card-blur: 14px;
+  --glass-card-tint: rgba(255, 255, 255, 0.72);
+  --glass-modal-blur: 20px;
+  --glass-modal-tint: rgba(255, 255, 255, 0.94);
+  --glass-border: rgba(17, 24, 39, 0.08);
+  --glass-border-strong: rgba(255, 255, 255, 0.6);
+  --glass-saturate: 160%;
+}
+
+/* مش روشن — سفید/خاکستری/جیگری: پایهٔ سفید با سه
+   گرادیان شعاعی کم‌رنگ. چون شیشه روی سفیدِ تخت هیچ اثری ندارد، مش
+   باید رنگ پشت پنل را بدهد؛ آلفاها کم‌اند تا صفحه «سفید» بماند. */
+.light-mesh {
+  background:
+    radial-gradient(ellipse 60% 50% at 15% 20%, rgba(127, 29, 29, 0.1), transparent 70%),
+    radial-gradient(ellipse 55% 45% at 85% 30%, rgba(17, 24, 39, 0.08), transparent 70%),
+    radial-gradient(ellipse 50% 60% at 50% 90%, rgba(153, 27, 27, 0.08), transparent 70%),
+    linear-gradient(180deg, #ffffff 0%, #f9fafb 100%);
+}
+
+/* ===== شیشه — دو سطح شدت (بستهٔ گرافیکی ۰٫۱۲٫۰) =====
+   ملایم: سایدبار، هدر چسبان، تب‌ها، کارت خلاصه.
+   پررنگ: فقط مودال و منوی بازشو (DocPicker).
+   کارت خواندنی: آلفا ≥۰٫۷۰ برای متن بدنه. مودال: آلفا ۰٫۹۴.
+   چت، ویرایشگر سند، ردیف تسک و نتایج جست‌وجو مات‌اند. */
+.glass-mild {
+  background: var(--glass-mild-tint);
+  -webkit-backdrop-filter: blur(var(--glass-mild-blur)) saturate(var(--glass-saturate));
+  backdrop-filter: blur(var(--glass-mild-blur)) saturate(var(--glass-saturate));
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 8px 24px rgba(17, 24, 39, 0.06);
+}
+.glass-strong {
+  background: var(--glass-strong-tint);
+  -webkit-backdrop-filter: blur(var(--glass-strong-blur)) saturate(var(--glass-saturate));
+  backdrop-filter: blur(var(--glass-strong-blur)) saturate(var(--glass-saturate));
+  border: 1px solid var(--glass-border-strong);
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.55),
+    0 8px 32px rgba(17, 24, 39, 0.12);
+}
+.glass-card {
+  background: var(--glass-card-tint);
+  -webkit-backdrop-filter: blur(var(--glass-card-blur)) saturate(var(--glass-saturate));
+  backdrop-filter: blur(var(--glass-card-blur)) saturate(var(--glass-saturate));
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  border-radius: 16px;
+  box-shadow: 0 8px 32px rgba(16, 24, 40, 0.08);
+  color: #101828;
+}
+.glass-modal {
+  background: var(--glass-modal-tint);
+  -webkit-backdrop-filter: blur(var(--glass-modal-blur)) saturate(var(--glass-saturate));
+  backdrop-filter: blur(var(--glass-modal-blur)) saturate(var(--glass-saturate));
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: 16px;
+}
+/* (نام قدیمی chrome در ۰٫۱۲٫۰ حذف شد — جایگزینی کامل، D-UX3 الف.) */
 
 /* دکمه‌های sclack_A: ارتفاع ۴۴px، گردی ۱۴px (تصمیم مرحلهٔ ۶) */
 .btn-sclack {
@@ -57,39 +141,41 @@ body {
   border-radius: 14px;
 }
 
-/* پیام خودم: کهربایی روشن؛ پیام دیگران: سفید */
+/* حلقهٔ فوکوس واضح — ۲px جیگری با فاصلهٔ ۲px */
+:focus-visible {
+  outline: 2px solid var(--jigari);
+  outline-offset: 2px;
+}
+
+/* پیام خودم: جیگری روشن؛ پیام دیگران: سفید */
 .msg-mine {
-  background: #fdeecd;
+  background: var(--jigari-soft);
 }
 .msg-other {
   background: #ffffff;
 }
 
-/* منشن در متن پیام — برجستگی کهربایی (پالت گرم مرحلهٔ ۵) */
+/* منشن در متن پیام — برجستگی جیگری */
 .msg-mention {
-  background: #fef3c7;
-  color: #92400e;
+  background: var(--jigari-soft);
+  color: var(--jigari);
   border-radius: 6px;
   padding: 0 3px;
   font-weight: 600;
 }
 
-/* اکسنت بنفش دستیار میوز — فقط داخل پنل دستیار استفاده می‌شود، هیچ‌جای دیگر سایت بنفش نیست */
-:root {
-  --ai-accent: #7c3aed;
-}
-
+/* اکسنت دستیار میوز — جیگری (D-UX3 الف: یک اکسنت در کل محصول) */
 .ai-panel {
-  border: 1px solid var(--ai-accent);
+  border: 1px solid var(--jigari);
 }
 
 .ai-panel .ai-title {
-  color: var(--ai-accent);
+  color: var(--jigari);
 }
 
 .btn-ai,
 .ai-btn {
-  background: var(--ai-accent);
+  background: var(--jigari-btn);
   color: #ffffff;
   height: 44px;
   min-height: 44px;
@@ -99,69 +185,19 @@ body {
 
 .btn-ai:hover,
 .ai-btn:hover {
-  background: #6d28d9;
+  background: var(--jigari);
 }
 
-/* G3-2 item 9 — the assistant home card: the only purple card. Kept
-   as a separate class from .btn-ai so the assistant button can be
-   used on the home page without tripping the S5 probe's source check
-   (which forbids 'btn-ai' outside the assistant view). */
+/* G3-2 item 9 — کارت خانهٔ دستیار: تنها کارت جیگری صفحهٔ خانه. */
 .ai-card {
-  border: 1px solid var(--ai-accent);
+  border: 1px solid var(--jigari);
 }
 
-/* ===== بخش ۵ گرافیک P01 — توکن‌های قفل‌شدهٔ R3 ===== */
-:root {
-  --bg-warm: #fffbeb;
-  --bg-warm-2: #fff7ed;
-  --ink: #1c1917;
-  --ink-soft: #57534e;
-  --amber: #f59e0b;
-  --amber-dark: #d97706;
-  --amber-contrast: #9a5603; /* T2: کنتراست ≈۵٫۶:۱ با متن سفید */
-  --coral: #fb7185;
-  --coral-dark: #f43f5e;
-  --peach: #fdba74;
-  --glass-blur: 16px;
-  --glass-saturate: 160%;
-  --glass-tint: rgba(255, 255, 255, 0.45);
-  --glass-border: rgba(255, 255, 255, 0.65);
-  --glass-radius: 24px;
-}
-
-/* مش گرم — CSS خالص، بدون عکس (R3) */
-.warm-mesh {
-  background:
-    radial-gradient(ellipse 60% 50% at 15% 20%, rgba(245, 158, 11, 0.45), transparent 70%),
-    radial-gradient(ellipse 55% 45% at 85% 30%, rgba(251, 113, 133, 0.4), transparent 70%),
-    radial-gradient(ellipse 50% 60% at 50% 90%, rgba(253, 186, 116, 0.45), transparent 70%),
-    radial-gradient(ellipse 70% 50% at 50% 50%, rgba(254, 215, 170, 0.5), transparent 75%),
-    linear-gradient(180deg, #fffbeb 0%, #fff7ed 100%);
-}
-
-/* شیشهٔ سبک — G3/G5: کارت‌ها (blur ‏۱۲–۱۶، saturate ‏۱۴۰–۱۸۰٪) */
-.glass-card {
-  background: var(--glass-tint);
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-  border: 1px solid var(--glass-border);
-  border-radius: 16px;
-  box-shadow: 0 8px 24px rgba(60, 30, 5, 0.08);
-}
-
-/* شیشهٔ سبک — G4: فقط کروم (سایدبار، هدر چسبان، ناوبری پایین) */
-.glass-chrome {
-  background: var(--glass-tint);
-  -webkit-backdrop-filter: blur(12px) saturate(var(--glass-saturate));
-  backdrop-filter: blur(12px) saturate(var(--glass-saturate));
-  border: 1px solid var(--glass-border);
-}
-
-/* انیمیشن ورود کارت — فقط transform/opacity؛ backdrop-filter هرگز انیمیت نمی‌شود (G5/G8) */
+/* انیمیشن ورود کارت — فقط transform/opacity؛ backdrop-filter هرگز انیمیت نمی‌شود */
 @keyframes sclack-enter {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(4px);
   }
   to {
     opacity: 1;
@@ -169,71 +205,85 @@ body {
   }
 }
 .anim-enter {
-  animation: sclack-enter 300ms ease-out both;
+  animation: sclack-enter 180ms ease-out both;
 }
 
-/* دکمه‌های کنترل هیرو — متن کهربایی تیره روی شیشهٔ روشن (کنتراست ≥۴٫۵:۱) */
+/* دکمه‌های کنترل هیرو — متن جیگری روی شیشهٔ روشن (کنتراست AAA) */
 .hero-control {
-  background: var(--glass-tint);
+  background: var(--glass-mild-tint);
   -webkit-backdrop-filter: blur(12px) saturate(var(--glass-saturate));
   backdrop-filter: blur(12px) saturate(var(--glass-saturate));
   border: 1px solid var(--glass-border);
-  color: var(--amber-contrast);
+  color: var(--jigari);
   border-radius: 14px;
   min-height: 36px;
 }
 .hero-control.btn-active {
-  background: var(--amber-contrast); /* G7-5: متن سفید روی #9a5603 ≈۵٫۷:۱ (روی #d97706 فقط ≈۳٫۲:۱ بود) */
+  background: var(--jigari-btn);
   color: #fff;
-  border-color: var(--amber-contrast);
+  border-color: var(--jigari-btn);
 }
 
-/* G7-5: متن کهربایی (لینک‌ها، نشان تایپ، برچسب فعال ناوبری) با کهربایی تیره
-   خوانا می‌ماند — #d97706 روی پس‌زمینهٔ روشن فقط ≈۳:۱ بود؛ #9a5603 ≈۵٫۵:۱ است.
-   فقط رنگ متن عوض می‌شود، نه پس‌زمینهٔ دکمه‌های اصلی. */
+/* متن اکسنت (لینک‌ها، برچسب فعال ناوبری) — جیگری، کنتراست ۱۰٫۰۲:۱ روی سفید */
 .text-primary {
-  color: var(--amber-contrast);
+  color: var(--jigari);
 }
 
-/* G7-5: موبایل — blur شیشه حداکثر ۸px (قانون لایه). این کوئری پیش از
+/* موبایل — blur شیشه حداکثر ۸px (قانون لایه). این کوئری پیش از
    قانون‌های کاهش شفافیت/حالت ساده می‌آید تا آن‌ها همچنان برنده باشند. */
 @media (max-width: 767px) {
+  .glass-mild,
+  .glass-strong,
   .glass-card,
-  .glass-chrome,
+  .glass-modal,
   .hero-control {
     -webkit-backdrop-filter: blur(8px) saturate(var(--glass-saturate));
     backdrop-filter: blur(8px) saturate(var(--glass-saturate));
   }
 }
 
-/* prefers-reduced-motion: حرکت خاموش (G8) */
+/* prefers-reduced-motion: حرکت خاموش */
 @media (prefers-reduced-motion: reduce) {
   .anim-enter {
     animation: none;
   }
+  .glass-mild,
+  .glass-strong,
   .glass-card,
-  .glass-chrome,
+  .glass-modal,
   .hero-control {
     transition: none;
   }
 }
 
-/* prefers-reduced-transparency + «حالت ساده»: شیشه به مات برمی‌گردد (R3/T2) */
+/* prefers-reduced-transparency + «حالت ساده»: شیشه به مات برمی‌گردد */
 @media (prefers-reduced-transparency: reduce) {
+  .glass-mild,
+  .glass-strong,
   .glass-card,
-  .glass-chrome,
+  .glass-modal,
   .hero-control {
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
-    background: var(--color-base-200);
+    background: var(--color-base-100);
+    border-color: var(--line);
+  }
+  .light-mesh {
+    background: linear-gradient(180deg, #ffffff 0%, #f9fafb 100%);
   }
 }
+html.simple-mode .glass-mild,
+html.simple-mode .glass-strong,
 html.simple-mode .glass-card,
-html.simple-mode .glass-chrome,
+html.simple-mode .glass-modal,
 html.simple-mode .hero-control {
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
-  background: var(--color-base-200);
+  background: var(--color-base-100);
+  border-color: var(--line);
+}
+html.simple-mode .light-mesh {
+  background: linear-gradient(180deg, #ffffff 0%, #f9fafb 100%);
 }
 html.simple-mode .anim-enter {
   animation: none;
@@ -242,10 +292,10 @@ html.simple-mode .anim-enter {
 /* ===== فاز ۲ پلن کمبودها — ویرایش پروژه =====
    همان زبان فاز ۱؛ حرکت فقط transform/opacity. */
 .project-edit-btn:hover {
-  border-color: var(--amber-dark);
+  border-color: var(--jigari);
 }
 .project-editing {
-  outline: 2px solid var(--amber);
+  outline: 2px solid rgba(127, 29, 29, 0.4);
   outline-offset: 2px;
   border-radius: 16px;
 }
@@ -257,12 +307,13 @@ html.simple-mode .anim-enter {
 }
 
 /* ===== فاز ۱ پلن کمبودها — ویرایش کار + فهرست‌کشویی سند =====
-   حرکت فقط transform/opacity؛ backdrop-filter هرگز انیمیت نمی‌شود. */
+   حرکت فقط transform/opacity؛ backdrop-filter هرگز انیمیت نمی‌شود.
+   مهاجرت توکن (۰٫۱۲٫۰): فقط رنگ و شیشه عوض شده‌اند. */
 .task-edit-btn:hover {
-  border-color: var(--amber-dark);
+  border-color: var(--jigari);
 }
 .task-editing {
-  outline: 2px solid var(--amber);
+  outline: 2px solid rgba(127, 29, 29, 0.4);
   outline-offset: 2px;
   border-radius: 16px;
 }
@@ -372,10 +423,10 @@ html.simple-mode .doc-picker-menu {
 }
 
 /* ===== G6 graphics — دستیار میوز (g6-grafik-spec.md) =====
-   همهٔ انتخاب‌کننده‌ها با ‎.ai-‎ شروع می‌شوند تا قانون «بنفش فقط در
-   پنل دستیار» (کاوش S5/G3) برقرار بماند؛ رنگ بنفش فقط از راه
-   ‎var(--ai-accent)‎ می‌آید، نه هگز مستقیم. حرکت فقط transform/opacity
-   است؛ ‎backdrop-filter‎ هرگز انیمیت نمی‌شود. */
+   همهٔ انتخاب‌کننده‌ها با ‎.ai-‎ شروع می‌شوند تا قانون «اکسنت فقط در
+   پنل دستیار» برقرار بماند؛ اکسنت جیگری فقط از راه ‎var(--jigari)‎
+   می‌آید، نه هگز مستقیم. حرکت فقط transform/opacity است؛
+   ‎backdrop-filter‎ هرگز انیمیت نمی‌شود. */
 
 /* سربرگ شیشه‌ای پنل + نشان «۳۰ دستور» + دکمهٔ حالت ساده */
 .ai-head {
@@ -391,7 +442,7 @@ html.simple-mode .doc-picker-menu {
   min-width: 0;
 }
 .ai-badge {
-  background: var(--ai-accent);
+  background: var(--jigari);
   color: #fff;
   font-size: 12px;
   font-weight: 700;
@@ -409,14 +460,14 @@ html.simple-mode .doc-picker-menu {
   overflow: hidden;
 }
 .search-match-badge {
-  background: #fef3c7;
-  color: #92400e;
-  border-color: #fde68a;
+  background: var(--jigari-soft);
+  color: var(--jigari);
+  border-color: #fecaca;
   white-space: nowrap;
 }
 .search-mark {
-  background: #fde68a;
-  color: #1c1917;
+  background: var(--jigari-soft);
+  color: var(--jigari);
   border-radius: 2px;
 }
 .ai-simple-btn {
@@ -431,8 +482,8 @@ html.simple-mode .doc-picker-menu {
   cursor: pointer;
 }
 .ai-simple-btn[aria-pressed="true"] {
-  background: var(--ai-accent);
-  border-color: var(--ai-accent);
+  background: var(--jigari-btn);
+  border-color: var(--jigari-btn);
   color: #fff;
 }
 
@@ -446,7 +497,7 @@ html.simple-mode .doc-picker-menu {
 .ai-chip-group-label {
   font-size: 12px;
   font-weight: 700;
-  color: #6d28d9;
+  color: var(--jigari);
 }
 .ai-chip-row {
   display: flex;
@@ -458,7 +509,7 @@ html.simple-mode .doc-picker-menu {
   min-height: 44px;
   border-radius: 999px;
   border: 1px solid var(--glass-border);
-  background: var(--glass-tint);
+  background: var(--glass-mild-tint);
   -webkit-backdrop-filter: blur(8px) saturate(var(--glass-saturate));
   backdrop-filter: blur(8px) saturate(var(--glass-saturate));
   color: var(--ink);
@@ -473,25 +524,25 @@ html.simple-mode .doc-picker-menu {
     background-color 120ms ease-out;
 }
 .ai-chip:hover {
-  border-color: var(--ai-accent);
+  border-color: var(--jigari);
 }
 .ai-chip:active {
   transform: scale(0.97);
 }
 .ai-chip[aria-pressed="true"] {
-  background: var(--ai-accent);
-  border-color: var(--ai-accent);
+  background: var(--jigari-btn);
+  border-color: var(--jigari-btn);
   color: #fff;
-  box-shadow: 0 4px 16px rgba(124, 58, 237, 0.25);
+  box-shadow: 0 4px 16px rgba(127, 29, 29, 0.25);
 }
 .ai-chip-tag {
   font-size: 10px;
   font-weight: 700;
-  color: #6d28d9;
+  color: var(--jigari);
   margin-inline-start: 4px;
 }
 .ai-chip[aria-pressed="true"] .ai-chip-tag {
-  color: #ede9fe;
+  color: #fee2e2;
 }
 
 /* کارت‌های نتیجه — ورود ۱۸۰ms با stagger ‏۳۰ms (حداکثر ۶ کارت) */
@@ -529,16 +580,16 @@ html.simple-mode .doc-picker-menu {
   margin-top: 4px;
 }
 .ai-result-quote {
-  border-inline-start: 2px solid var(--ai-accent);
+  border-inline-start: 2px solid var(--jigari);
 }
 .ai-result-suggest {
-  border: 1px solid var(--ai-accent);
+  border: 1px solid var(--jigari);
 }
 .ai-result-list .ai-result-row:hover {
   background: var(--color-base-300);
 }
 .ai-result-guardian {
-  border-top: 2px solid var(--ai-accent);
+  border-top: 2px solid var(--jigari);
   padding-top: 4px;
 }
 .ai-result-empty {
@@ -567,7 +618,7 @@ html.simple-mode .doc-picker-menu {
   width: 12px;
   height: 12px;
   border-radius: 999px;
-  background: var(--ai-accent);
+  background: var(--jigari);
   margin-inline-end: 6px;
   animation: ai-skeleton-pulse 1.2s ease-in-out infinite;
 }
@@ -601,7 +652,7 @@ html.simple-mode .doc-picker-menu {
 
 /* بخش موجودِ فعال (از راه چیپ انتخاب شده) */
 .ai-active {
-  outline: 2px solid var(--ai-accent);
+  outline: 2px solid var(--jigari);
   outline-offset: 2px;
   border-radius: 16px;
 }
@@ -644,7 +695,7 @@ html.simple-mode .doc-picker-menu {
     background: var(--color-base-100);
   }
   .ai-chip[aria-pressed="true"] {
-    background: var(--ai-accent);
+    background: var(--jigari-btn);
     box-shadow: none;
   }
 }
@@ -655,7 +706,7 @@ html.simple-mode .ai-head {
   background: var(--color-base-100);
 }
 html.simple-mode .ai-chip[aria-pressed="true"] {
-  background: var(--ai-accent);
+  background: var(--jigari-btn);
   box-shadow: none;
 }
 html.simple-mode .ai-enter,
@@ -665,16 +716,21 @@ html.simple-mode .ai-spinner {
 }
 
 /* فاز ۴ — سند غنی (مارک‌داون سبک، مشخصات faz4): حالت خواندن، جدول
-   گرم، پیوند بین سندها، نوار ابزار ویرایش، کلید خواندن/ویرایش. */
+   جیگری، پیوند بین سندها، نوار ابزار ویرایش، کلید خواندن/ویرایش. */
+.doc-page {
+  max-width: 720px;
+  margin-inline: auto;
+  width: 100%;
+}
 .doc-read {
-  color: var(--ink, #1c1917);
+  color: var(--ink, #111827);
   font-size: 1rem;
   line-height: 2;
 }
 .doc-read h1 {
   font-size: 1.5rem;
   font-weight: 800;
-  border-bottom: 2px solid #fde68a;
+  border-bottom: 2px solid var(--line);
   padding-bottom: 0.5rem;
   margin-bottom: 1rem;
 }
@@ -696,7 +752,7 @@ html.simple-mode .ai-spinner {
   list-style: disc;
 }
 .doc-read ul ::marker {
-  color: #d97706;
+  color: var(--jigari);
 }
 .doc-read ol {
   list-style: decimal;
@@ -706,7 +762,7 @@ html.simple-mode .ai-spinner {
 }
 .doc-table-wrap {
   overflow-x: auto;
-  border: 1px solid #fde68a;
+  border: 1px solid var(--line);
   border-radius: 0.75rem;
   margin-bottom: 0.75rem;
 }
@@ -715,8 +771,8 @@ html.simple-mode .ai-spinner {
   border-collapse: collapse;
 }
 .doc-table th {
-  background: #fef3c7;
-  color: #92400e;
+  background: var(--surface);
+  color: var(--jigari);
   font-weight: 700;
   text-align: start;
   padding: 0.5rem 0.75rem;
@@ -727,29 +783,29 @@ html.simple-mode .ai-spinner {
   padding: 0.5rem 0.75rem;
   font-size: 0.875rem;
   line-height: 1.75;
-  border-top: 1px solid #fef3c7;
+  border-top: 1px solid var(--line);
 }
 .doc-table tbody tr:nth-child(even) {
-  background: #fffbeb;
+  background: var(--paper-soft);
 }
 .doc-wikilink {
-  color: #b45309;
+  color: var(--jigari);
   text-decoration: underline;
-  text-decoration-color: #fcd34d;
+  text-decoration-color: var(--jigari-soft);
 }
 .doc-wikilink:hover {
-  background: #fef3c7;
+  background: var(--jigari-soft);
   border-radius: 0.25rem;
 }
 .doc-wikilink-missing {
-  color: #57534e;
+  color: var(--ink-soft);
   text-decoration: underline dotted;
 }
 .doc-toolbar {
   display: flex;
   flex-wrap: wrap;
   gap: 0.25rem;
-  background: var(--color-base-200, #f5f0e6);
+  background: var(--color-base-200, #f9fafb);
   border-radius: 0.75rem;
   padding: 0.25rem;
 }
@@ -773,7 +829,7 @@ html.simple-mode .doc-fade {
 }
 
 /* فاز ۵ — سند تودرتو (تصمیم D4): درخت نوار کناری، نان‌کرامب و
-   کنش انتقال در سربرگ سند. پالت گرم فازهای پیش، بدون بنفش. */
+   کنش انتقال در سربرگ سند. پالت تازهٔ سفید/خاکستری/جیگری. */
 .doc-tree-children {
   padding-inline-start: 1rem;
 }
@@ -782,27 +838,108 @@ html.simple-mode .doc-fade {
   min-width: 2rem;
   font-size: 1rem;
   line-height: 1;
-  color: #b45309;
+  color: var(--jigari);
+  transition: transform 150ms ease-out;
+}
+.doc-tree-toggle[aria-expanded="false"] {
+  transform: rotate(-90deg);
 }
 .doc-tree-count {
-  background: #fef3c7;
-  color: #92400e;
+  background: var(--jigari-soft);
+  color: var(--jigari);
   border: none;
 }
 .doc-breadcrumb {
-  color: #78716c;
+  color: var(--ink-soft);
 }
 .doc-breadcrumb-link {
-  color: #b45309;
+  color: var(--jigari);
   text-decoration: underline;
-  text-decoration-color: #fcd34d;
+  text-decoration-color: var(--jigari-soft);
 }
 .doc-breadcrumb-link:hover {
-  background: #fef3c7;
+  background: var(--jigari-soft);
   border-radius: 0.25rem;
 }
 .doc-move {
-  background: var(--color-base-200, #f5f0e6);
+  background: var(--color-base-200, #f9fafb);
   border-radius: 0.75rem;
   padding: 0.5rem;
+}
+
+/* ===== نوار تب‌های سند (D-UX6 الف) — بالای ناحیهٔ ویرایشگر =====
+   تب فعال مات سفید با خط زیرین جیگری است؛ متن روی شیشهٔ کم‌آلفا نمی‌نشیند. */
+.doc-tabs {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  overflow-x: auto;
+  padding: 0 8px;
+  scrollbar-width: thin;
+}
+.doc-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  max-width: 200px;
+  padding: 6px 10px;
+  border-radius: 12px 12px 0 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-soft);
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color 120ms ease-out,
+    color 120ms ease-out;
+}
+.doc-tab:hover {
+  background: var(--surface);
+  color: var(--ink);
+}
+.doc-tab-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.doc-tab-active {
+  background: #ffffff;
+  color: var(--ink);
+  font-weight: 700;
+  box-shadow: inset 0 -2px 0 var(--jigari);
+}
+.doc-tab-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  font-size: 14px;
+  line-height: 1;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.doc-tab-close:hover {
+  background: var(--jigari-soft);
+  color: var(--jigari);
+}
+.doc-tab-new {
+  flex: 0 0 auto;
+  min-width: 40px;
+  min-height: 40px;
+  border-radius: 12px 12px 0 0;
+  font-size: 18px;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.doc-tab-new:hover {
+  background: var(--surface);
+  color: var(--jigari);
+}
+@media (prefers-reduced-motion: reduce) {
+  .doc-tab,
+  .doc-tree-toggle {
+    transition: none;
+  }
 }

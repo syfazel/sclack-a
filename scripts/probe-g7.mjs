@@ -73,7 +73,7 @@ function norm(s) {
 }
 
 // ---------- 1. PROBE PAGE (G7-1 / G7-2 / G7-3 text) ----------
-const filesDir = new URL('../../../files/', import.meta.url).pathname
+const filesDir = new URL('../../goals/sclack-a/files/', import.meta.url).pathname
 const draftDir = new URL('..', import.meta.url).pathname
 const probePage = readFileSync(draftDir + '/archive/w0-probe.html', 'utf8')
 
@@ -211,22 +211,23 @@ function resolve(v) {
   return m ? tokens[m[1]] || v : v
 }
 // Pairs actually rendered as text (fg on bg), with the bar each must meet.
+// 0.12.0 — پالت تازهٔ سفید/خاکستری/جیگری (بستهٔ گرافیکی).
 const pairs = [
   // body text >= 4.5
-  ['body: base-content on base-100', '#3f2e1e', '#fdf8ef', 4.5],
-  ['body: ink on bg-warm', '#1c1917', '#fffbeb', 4.5],
-  ['body: ink-soft on bg-warm', '#57534e', '#fffbeb', 4.5],
-  ['body: mention text on mention bg', '#92400e', '#fef3c7', 4.5],
-  ['body: ai-accent text on white', '#7c3aed', '#ffffff', 4.5],
-  ['body: amber-contrast on bg-warm', '#9a5603', '#fffbeb', 4.5],
-  ['body: warning text on base-100', '#b45309', '#fdf8ef', 4.5],
-  ['body: error text on base-100', '#b91c1c', '#fdf8ef', 4.5],
-  ['body: success text on base-100', '#15803d', '#fdf8ef', 4.5],
+  ['body: base-content on base-100', '#111827', '#ffffff', 4.5],
+  ['body: ink on paper', '#111827', '#ffffff', 4.5],
+  ['body: ink-soft on paper', '#6b7280', '#ffffff', 4.5],
+  ['body: mention text on mention bg', '#7f1d1d', '#fee2e2', 4.5],
+  ['body: jigari text on white', '#7f1d1d', '#ffffff', 4.5],
+  ['body: jigari-btn text on white', '#991b1b', '#ffffff', 4.5],
+  ['body: warning text on base-100', '#b45309', '#ffffff', 4.5],
+  ['body: error text on base-100', '#b91c1c', '#ffffff', 4.5],
+  ['body: success text on base-100', '#15803d', '#ffffff', 4.5],
   // button / label text >= 4.5 (WCAG normal text)
-  ['button: primary-content on primary', '#1c1917', '#d97706', 4.5],
-  ['button: white on amber-contrast (hero active)', '#ffffff', '#9a5603', 4.5],
-  ['button: white on ai-accent (btn-ai)', '#ffffff', '#7c3aed', 4.5],
-  ['label: text-primary (= amber-contrast) on base-100', '#9a5603', '#fdf8ef', 4.5],
+  ['button: primary-content on primary', '#ffffff', '#991b1b', 4.5],
+  ['button: white on jigari (hero active)', '#ffffff', '#7f1d1d', 4.5],
+  ['button: white on jigari-btn (btn-ai)', '#ffffff', '#991b1b', 4.5],
+  ['label: text-primary (= jigari) on base-100', '#7f1d1d', '#ffffff', 4.5],
   ['label: white on success (btn-success)', '#ffffff', '#15803d', 4.5],
   ['label: white on warning (btn-warning)', '#ffffff', '#b45309', 4.5],
   ['label: white on error (btn-error)', '#ffffff', '#b91c1c', 4.5]
@@ -235,10 +236,10 @@ for (const [name, fg, bg, bar] of pairs) {
   const r = ratio(resolve(fg), resolve(bg))
   check(`G7-5 contrast: ${name} = ${r.toFixed(2)}:1 (>= ${bar}:1)`, r >= bar)
 }
-check('G7-5 contrast: .text-primary is overridden to amber-contrast in app.css',
-  /\.text-primary\s*\{[^}]*color:\s*var\(--amber-contrast\)/.test(cssSrc))
-check('G7-5 contrast: primary-content token is dark ink (not near-white)',
-  tokens['--color-primary-content'] === '#1c1917')
+check('G7-5 contrast: .text-primary is overridden to jigari in app.css',
+  /\.text-primary\s*\{[^}]*color:\s*var\(--jigari\)/.test(cssSrc))
+check('G7-5 contrast: primary-content token is white (on the jigari primary)',
+  tokens['--color-primary-content'] === '#ffffff')
 
 // ---------- 5. POLISH (source): backdrop-filter / reduced modes / mobile blur ----------
 {

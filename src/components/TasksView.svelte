@@ -579,7 +579,7 @@
 
   <!-- G4 — هدر چسبان دفتر: شیشهٔ سبک، فقط کروم -->
   <div
-    class="glass-chrome sticky top-0 z-10 -mx-4 -mt-6 px-4 pt-6 pb-3 md:-mx-8 md:px-8"
+    class="glass-mild sticky top-0 z-10 -mx-4 -mt-6 px-4 pt-6 pb-3 md:-mx-8 md:px-8"
     data-planner-header
   >
     <h1 class="text-2xl font-bold">کارها</h1>

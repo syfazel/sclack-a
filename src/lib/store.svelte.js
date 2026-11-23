@@ -19,6 +19,9 @@ export const ws = $state({
   tasks: [],
   templates: [],
   reminders: [],
+  privateDocs: [], // یادداشت‌های خصوصیِ من (visibility='personal') — بخش خصوصی سایدبار
+  docTabs: [], // تب‌های باز سند (D-UX6) — [{id, title}]، در localStorage می‌مانند
+  closedDocTabs: [], // تب‌های بسته‌شده — برای Ctrl+Shift+T
   currentProjectId: null,
   currentRoomId: null,
   loading: false,
@@ -59,5 +62,6 @@ export const pulse = $state({
 // ترجیح‌های نمایشی (بخش ۵ P01): «حالت ساده» شیشه را مات می‌کند و
 // صحنهٔ سه‌بعدی را خاموش می‌کند.
 export const displayPrefs = $state({
-  simple: false
+  simple: false,
+  sidebarHidden: false // Ctrl+\ — جمع‌کردن سایدبار
 })
