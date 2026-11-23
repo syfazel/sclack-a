@@ -3,16 +3,16 @@
      کارت‌های شیشه‌ای، سفید/خاکستری/جیگری. ۵ پرده، ۱۹ ایستگاه — هر
      ایستگاه برچسب کوچک فارسی دارد؛ در هر پرده یک قابلیت قهرمان
      (station-hero) با حرکت/بزرگ‌شدن برجسته است و بقیهٔ ایستگاه‌ها
-     کارت شیشه‌ای نیمه‌شفاف پس‌زمینه‌اند (station-bg). دو کلیپ Veo:
-     A نورِ پس‌زمینهٔ لوپ پشت صحنه‌ها، B پایان (پنجرهٔ ۷–۱۰ ثانیه)؛
-     اگر کلیپی نرسید، همان پرده به‌صورت کدی برمی‌گردد (fallback صریح).
+     کارت شیشه‌ای نیمه‌شفاف پس‌زمینه‌اند (station-bg). کلیپ B پایان
+     (پنجرهٔ ۷–۱۰ ثانیه) این‌جاست؛ کلیپ A (نورِ پس‌زمینهٔ لوپ) از
+     ۰٫۱۷٫۰ لایهٔ مشترک پایین لندینگ در Login است، نه داخل تیزر —
+     اگر کلیپ B نرسید، پایان به‌صورت کدی برمی‌گردد (fallback صریح).
      صحنهٔ سه‌بعدی تازه‌ای ندارد؛ HeroScene دست نخورده پشت آن می‌ماند.
      ساعت در Login است و beat را prop می‌دهد (۰ تا ۲۹؛ پایان ۳۰۰۰۰ms). -->
 <script>
   let { beat = 0, onskip = () => {} } = $props()
 
   const base = import.meta.env.BASE_URL
-  let videoAError = $state(false)
   let videoBError = $state(false)
   let finaleVideo = $state(null)
 
@@ -41,23 +41,8 @@
   data-teaser
   data-beat={beat}
   data-act={act}
-  data-video-a-fallback={videoAError || undefined}
   data-video-b-fallback={videoBError || undefined}
 >
-  {#if !videoAError}
-    <video
-      class="teaser-video-bg"
-      data-teaser-video-a
-      src="{base}teaser/clip-a-light.mp4"
-      autoplay
-      muted
-      loop
-      playsinline
-      aria-hidden="true"
-      onerror={() => (videoAError = true)}
-    ></video>
-  {/if}
-
   {#if beat < 2}
     <div class="teaser-intro" aria-hidden="true">
       <svg class="teaser-svg" viewBox="0 0 360 120" aria-hidden="true">
@@ -297,17 +282,6 @@
   }
   .intro-teaser.teaser-fading {
     opacity: 0;
-  }
-
-  /* کلیپ A — نورِ پس‌زمینهٔ لوپ پشت صحنه‌ها. */
-  .teaser-video-bg {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    opacity: 0.45;
-    pointer-events: none;
   }
 
   /* مقدمه (۰–۲ ثانیه): خط + چهار نقطه، همان نسخهٔ ۱. */

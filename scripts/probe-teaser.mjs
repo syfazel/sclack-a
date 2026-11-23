@@ -1,5 +1,7 @@
 // Intro teaser probe v2 (scripts/probe-teaser.mjs) — 0.16.0 تیزر ورودی لندینگ
 // «یک خط، نوزده ایستگاه» (plan-teaser-v2.md §6/§7/§9/§10).
+// 0.17.0: کلیپ A از تیزر بیرون رفت (لایهٔ مشترک پایین لندینگ در Login؛
+// probe-landing-video) — این پروب فقط کلیپ B را چک می‌کند.
 //
 // Mounts the REAL built bundle in jsdom with a stubbed Supabase backend
 // (signed-out, so the landing renders) and asserts:
@@ -13,9 +15,10 @@
 //   * بعد از ۳۰ ثانیه overlay می‌رود، کارت ورود کامل است و نشانگر در
 //     فیلد ایمیل چشمک می‌زند.
 //   * کارت ورود تا پردهٔ ۲۷ پنهان است.
-//   * دو کلیپ ویدیویی (clip-a-light.mp4 لوپِ پس‌زمینه، clip-b-finale.mp4
-//     پنجرهٔ ۷–۱۰ ثانیه) با src پایه‌محور حاضرند؛ با خطای لود، همان
-//     پرده به‌صورت کدی برمی‌گردد (fallback صریح).
+//   * کلیپ پایانی (clip-b-finale.mp4، پنجرهٔ ۷–۱۰ ثانیه) با src
+//     پایه‌محور حاضر است؛ با خطای لود، پایان به‌صورت کدی برمی‌گردد
+//     (fallback صریح). کلیپ A (نورِ پس‌زمینه) از ۰٫۱۷٫۰ لایهٔ مشترک
+//     پایین لندینگ در Login است و در probe-landing-video چک می‌شود.
 //   * با prefers-reduced-motion یا «حالت ساده» تیزر رد می‌شود و ورود
 //     مستقیم نشان داده می‌شود (بدون نشانگر).
 //   * هیچ صحنهٔ سه‌بعدی تازه‌ای نیست.
@@ -59,7 +62,7 @@ function check(name, cond, extra) {
   const teaserSrc = readFileSync(new URL('../src/components/IntroTeaser.svelte', import.meta.url), 'utf8')
   const loginSrc = readFileSync(new URL('../src/components/Login.svelte', import.meta.url), 'utf8')
   const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
-  check('static: version is 0.16.0', pkg.version === '0.16.0', 'version ' + pkg.version)
+  check('static: version is 0.17.0', pkg.version === '0.17.0', 'version ' + pkg.version)
   check('static: IntroTeaser exists with data-teaser + data-beat + data-act',
     teaserSrc.includes('data-teaser') && teaserSrc.includes('data-beat') && teaserSrc.includes('data-act'))
   check('static: all 19 stations present (data-station 1..19)',
@@ -77,14 +80,15 @@ function check(name, cond, extra) {
     loginSrc.includes('b <= 29') && loginSrc.includes('b * 1000') && loginSrc.includes('30000'))
   check('static: login card hidden until beat 27; caret only on natural end (teaserCompleted)',
     loginSrc.includes('teaserBeat < 27') && loginSrc.includes('teaserCompleted'))
-  check('static: video A (looping light bg) + video B (finale window 7-10), base-aware src',
-    teaserSrc.includes('data-teaser-video-a') && teaserSrc.includes('clip-a-light.mp4') &&
+  check('static: video B (finale window 7-10) with base-aware src; clip A moved to Login (shared landing layer)',
     teaserSrc.includes('data-teaser-video-b') && teaserSrc.includes('clip-b-finale.mp4') &&
     teaserSrc.includes('data-finale-window="7-10"') &&
-    teaserSrc.includes('import.meta.env.BASE_URL') && teaserSrc.includes('loop'))
-  check('static: video error fallbacks (onerror → hide clip)',
-    (teaserSrc.match(/onerror=/g) || []).length >= 2 &&
-    teaserSrc.includes('videoAError') && teaserSrc.includes('videoBError'))
+    teaserSrc.includes('import.meta.env.BASE_URL') &&
+    !teaserSrc.includes('clip-a-light.mp4') && !teaserSrc.includes('data-teaser-video-a') &&
+    loginSrc.includes('data-landing-video') && loginSrc.includes('clip-a-light.mp4'))
+  check('static: video B error fallback (onerror → hide clip, code finale)',
+    teaserSrc.includes('onerror=') && teaserSrc.includes('videoBError') &&
+    !teaserSrc.includes('videoAError'))
   check('static: reduced-motion + simple-mode skip the teaser',
     loginSrc.includes('prefers-reduced-motion') && loginSrc.includes('displayPrefs.simple'))
   check('static: email caret after the teaser (data-teaser-caret)',
@@ -214,21 +218,9 @@ async function main() {
   check('mount: skip button («رد کردن») is present',
     !!w1.document.querySelector('[data-teaser-skip]') &&
     w1.document.querySelector('[data-teaser-skip]')?.textContent.trim() === 'رد کردن')
-  check('mount: video A (ambient light loop) present with its src',
-    !!w1.document.querySelector('[data-teaser-video-a]') &&
-    (w1.document.querySelector('[data-teaser-video-a]')?.getAttribute('src') || '').includes('clip-a-light.mp4'))
   check('mount: login card is hidden while the teaser plays (beats 0-26)',
     !!w1.document.querySelector('.teaser-card-hidden'))
   check('mount: sign-in form is in the DOM behind the teaser', signInFormRenders(w1))
-
-  // Video A fallback: a load error hides the clip (code scene continues).
-  {
-    const vA = w1.document.querySelector('[data-teaser-video-a]')
-    vA.dispatchEvent(new w1.Event('error'))
-    await sleep(250)
-    check('mount: video A fallback — clip hidden after load error, fallback flag set',
-      !w1.document.querySelector('[data-teaser-video-a]') && root1()?.hasAttribute('data-video-a-fallback'))
-  }
 
   // Poll the whole 30s timeline: stations, beats, acts, heroes, video B.
   const seenStations = new Set()

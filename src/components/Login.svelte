@@ -26,6 +26,12 @@
   let emailFocused = $state(false)
   let teaserTimers = []
 
+  // باند ویدیویی پایین لندینگ (۰٫۱۷٫۰) — کلیپ A جمینای (نورِ پس‌زمینه،
+  // لوپ فریم‌به‌فریم)، لایهٔ مشترک: هم در ۳۰ ثانیهٔ تیزر هم بعدش
+  // می‌ماند (دیگر داخل IntroTeaser نیست — یک المنت، یک دیکد).
+  const base = import.meta.env.BASE_URL
+  let videoError = $state(false)
+
   function clearTeaserTimers() {
     teaserTimers.forEach(clearTimeout)
     teaserTimers = []
@@ -128,6 +134,23 @@
       </div>
     {/await}
   </div>
+  {#if teaserAllowed() && !videoError}
+    <!-- باند ویدیویی پایین لندینگ — کلیپ A؛ با reduced-motion یا
+         «حالت ساده» مخفی است (همان قانون تیزر)؛ با خطای لود هم مخفی
+         می‌شود و صفحه مثل قبل می‌ماند. -->
+    <video
+      class="landing-video-bg absolute inset-x-0 bottom-0"
+      data-landing-video
+      src="{base}teaser/clip-a-light.mp4"
+      autoplay
+      muted
+      loop
+      playsinline
+      preload="auto"
+      aria-hidden="true"
+      onerror={() => (videoError = true)}
+    ></video>
+  {/if}
   {#if teaserActive && !teaserDone}
     <IntroTeaser beat={teaserBeat} onskip={skipTeaser} />
   {/if}
@@ -252,6 +275,23 @@
 </div>
 
 <style>
+  /* باند ویدیویی پایین لندینگ (۰٫۱۷٫۰): کلیپ A جمینای، لوپ فریم‌به‌فریم؛
+     لایهٔ مشترک زیر کارت (z-10) و تیزر (z-20) و بالای صحنهٔ سه‌بعدی؛
+     بالای باند با ماسک گرادیان به صفحه محو می‌شود. */
+  .landing-video-bg {
+    z-index: 5;
+    width: 100%;
+    height: 45vh;
+    object-fit: cover;
+    pointer-events: none;
+    -webkit-mask-image: linear-gradient(to bottom, transparent, black 30%);
+    mask-image: linear-gradient(to bottom, transparent, black 30%);
+  }
+  @media (max-width: 480px) {
+    .landing-video-bg {
+      height: 35vh;
+    }
+  }
   /* تیزر ورودی (۰٫۱۶٫۰): کارت تا پردهٔ پایان (۲۷) پنهان است و با آن می‌نشیند. */
   .teaser-card {
     transition:
