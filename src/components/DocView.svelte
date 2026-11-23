@@ -13,6 +13,8 @@
     resolveAnchor
   } from '../lib/docs.js'
   import { createYDoc, connectBroadcast, bindTextarea, applyDocState } from '../lib/yjs-sync.js'
+  import { renderMdLite, insertMdSnippet } from '../lib/md-lite.js'
+  import { tick } from 'svelte'
   import FileList from './FileList.svelte'
   import VersionsPanel from './VersionsPanel.svelte'
 
@@ -37,6 +39,52 @@
   let commentError = $state('')
   let commentBusy = $state(false)
   let showResolved = $state(false)
+
+  // Phase 4 (D3, option A — lite Markdown, faz4 spec): read mode is
+  // the default; edit mode is the same <textarea> as before plus a
+  // small toolbar. The text stays one Y.Text named `content`; the read
+  // view re-renders on every Yjs update (local or remote).
+  let mode = $state('read') // 'read' | 'edit'
+  let renderedHtml = $state('')
+
+  // Wikilinks resolve by title inside THIS project (ws.docs holds the
+  // current project's docs); a duplicate title resolves to the most
+  // recently updated doc (resolveWikiDoc in md-lite.js).
+  function rerender() {
+    if (!ytext || !docRow) return
+    const projectDocs = (ws.docs || []).filter((d) => d.project_id === docRow.project_id)
+    renderedHtml = renderMdLite(ytext.toString(), projectDocs)
+  }
+  function onYTextChange() {
+    rerender()
+  }
+
+  function setMode(next) {
+    mode = next
+    // In read mode there is no caret: clear the stale cursor position
+    // from presence instead of showing where the user last typed.
+    if (next === 'read' && bc) bc.awareness.setLocalStateField('cursor', null)
+  }
+
+  // Toolbar insert: pure syntax via insertMdSnippet, then one 'input'
+  // event so the Yjs binding (bindTextarea) applies it to the doc.
+  function applyTool(kind) {
+    if (!textarea || !ytext) return
+    const { text, selStart, selEnd } = insertMdSnippet(
+      textarea.value,
+      textarea.selectionStart ?? textarea.value.length,
+      textarea.selectionEnd ?? textarea.value.length,
+      kind
+    )
+    textarea.value = text
+    textarea.dispatchEvent(new Event('input', { bubbles: true }))
+    textarea.focus()
+    try {
+      textarea.setSelectionRange(selStart, selEnd)
+    } catch {
+      // ignore
+    }
+  }
 
   // P01 B3: one-level threading — a reply's parent_id points at a
   // top-level comment; replies render nested under it and have no reply
@@ -117,6 +165,10 @@
     bc.awareness.on('change', refreshPresence)
     refreshPresence()
     ydoc.on('update', onDocUpdate)
+    // Phase 4: re-render the read view on every Yjs update (local or
+    // remote — ytext.observe fires for both).
+    ytext.observe(onYTextChange)
+    rerender()
     // NOTE: the textarea is NOT bound here. It only renders after
     // `loading` turns false below, so `textarea` is still null at this
     // point — binding here silently never happened (D6 bug 1: typed text
@@ -154,6 +206,7 @@
       flushSave()
     }
     if (ydoc) ydoc.off('update', onDocUpdate)
+    if (ytext) ytext.unobserve(onYTextChange)
     if (bc) {
       bc.awareness.off('change', refreshPresence)
       bc.destroy()
@@ -243,8 +296,19 @@
     }
   }
 
-  function goToAnchor(c) {
-    if (!ytext || !ydoc || !textarea) return
+  // Phase 4 decision (recorded): comments and presence need the
+  // textarea, so «رفتن به محل» first switches to edit mode and only
+  // then moves the caret there. A comment added while in read mode has
+  // no selection to anchor to, so it is stored without an anchor
+  // (doAddComment already guards `textarea` for that).
+  async function goToAnchor(c) {
+    if (!ytext || !ydoc) return
+    if (mode === 'read') {
+      setMode('edit')
+      await tick()
+      await tick()
+    }
+    if (!textarea) return
     const pos = resolveAnchor(ydoc, c.anchor)
     if (!pos) return
     textarea.focus()
@@ -281,7 +345,29 @@
     {:else if docRow}
       <header class="border-b border-base-300 px-4 py-3">
         <h1 class="text-lg font-bold">{docRow.title}</h1>
-        <p class="text-xs opacity-70">
+        <!-- Phase 4 (faz4 spec §1): joined read/edit toggle, read active
+             by default; min 44px touch target, aria-pressed. -->
+        <div class="doc-mode-toggle join mt-2" data-mode-toggle role="group" aria-label="حالت نمایش سند">
+          <button
+            type="button"
+            class="btn join-item min-h-11 {mode === 'read' ? 'btn-primary' : 'btn-ghost'}"
+            data-mode="read"
+            aria-pressed={mode === 'read'}
+            onclick={() => setMode('read')}
+          >
+            خواندن
+          </button>
+          <button
+            type="button"
+            class="btn join-item min-h-11 {mode === 'edit' ? 'btn-primary' : 'btn-ghost'}"
+            data-mode="edit"
+            aria-pressed={mode === 'edit'}
+            onclick={() => setMode('edit')}
+          >
+            ویرایش
+          </button>
+        </div>
+        <p class="mt-2 text-xs opacity-70">
           {#if presenceList.length > 0}
             {#each presenceList as p, i}
               {p.name}{p.cursor !== null ? ' · نویسهٔ ' + p.cursor : ''}{i < presenceList.length - 1
@@ -304,16 +390,38 @@
           ذخیرهٔ ردیف (هر ۲ ثانیه) همگام می‌شود.
         </p>
       </header>
-      <div class="min-h-0 flex-1 px-4 py-3">
-        <textarea
-          bind:this={textarea}
-          class="textarea textarea-bordered h-full min-h-96 w-full resize-y bg-base-100 text-base leading-8"
-          placeholder="اینجا بنویسید…"
-          onkeyup={sendCursor}
-          onclick={sendCursor}
-          onselect={sendCursor}
-        ></textarea>
-      </div>
+      {#if mode === 'read'}
+        <div class="doc-fade min-h-0 flex-1 px-4 py-3">
+          {#if renderedHtml}
+            <div class="doc-read" data-doc-read>{@html renderedHtml}</div>
+          {:else}
+            <p class="text-base leading-8 opacity-50">
+              سند خالی است — برای نوشتن «ویرایش» را بزنید.
+            </p>
+          {/if}
+        </div>
+      {:else}
+        <div class="doc-fade min-h-0 flex-1 px-4 py-3">
+          <!-- Phase 4 toolbar (faz4 spec §5): text labels, not icons
+               only; after insert, focus returns to the textarea. -->
+          <div class="doc-toolbar mb-2" role="toolbar" aria-label="ابزار ویرایش سند">
+            <button type="button" class="btn btn-ghost btn-sm min-h-11" data-md-tool="h1" aria-label="درج عنوان" onclick={() => applyTool('h1')}>عنوان</button>
+            <button type="button" class="btn btn-ghost btn-sm min-h-11" data-md-tool="bold" aria-label="پررنگ کردن" onclick={() => applyTool('bold')}>پررنگ</button>
+            <button type="button" class="btn btn-ghost btn-sm min-h-11" data-md-tool="italic" aria-label="کج کردن" onclick={() => applyTool('italic')}>کج</button>
+            <button type="button" class="btn btn-ghost btn-sm min-h-11" data-md-tool="list" aria-label="درج فهرست" onclick={() => applyTool('list')}>فهرست</button>
+            <button type="button" class="btn btn-ghost btn-sm min-h-11" data-md-tool="table" aria-label="درج جدول" onclick={() => applyTool('table')}>جدول</button>
+            <button type="button" class="btn btn-ghost btn-sm min-h-11" data-md-tool="wikilink" aria-label="درج پیوند به سند" onclick={() => applyTool('wikilink')}>پیوند به سند</button>
+          </div>
+          <textarea
+            bind:this={textarea}
+            class="textarea textarea-bordered h-full min-h-96 w-full resize-y bg-base-100 text-base leading-8"
+            placeholder="اینجا بنویسید…"
+            onkeyup={sendCursor}
+            onclick={sendCursor}
+            onselect={sendCursor}
+          ></textarea>
+        </div>
+      {/if}
       {#if loadError}
         <p class="px-4 pb-3 text-xs text-error">{loadError}</p>
       {/if}

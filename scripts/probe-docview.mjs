@@ -333,6 +333,14 @@ async function waitFor(w, fn, timeoutMs = 10000, label = 'condition') {
   throw new Error('timeout waiting for ' + label)
 }
 
+// Phase 4: the doc view defaults to READ mode (no textarea). Switch to
+// EDIT mode first, then wait for the textarea to mount.
+async function switchToEdit(w, label) {
+  const toggle = await waitFor(w, () => w.document.querySelector('button[data-mode="edit"]'), 10000, 'mode toggle (' + label + ')')
+  if (toggle.getAttribute('aria-pressed') !== 'true') toggle.click()
+  return waitFor(w, () => w.document.querySelector('textarea[placeholder="\u0627\u06cc\u0646\u062c\u0627 \u0628\u0646\u0648\u06cc\u0633\u06cc\u062f\u2026"]'), 10000, label)
+}
+
 function docTextFromB64(b64) {
   const doc = new Y.Doc()
   const bytes = decodeDocState(b64)
@@ -357,7 +365,7 @@ async function main() {
   const m1 = await mountApp({ html, js }, stub, '#/doc/' + DOC_ID)
   const { w } = m1
   m1errors = m1.errors
-  const ta = await waitFor(w, () => w.document.querySelector('textarea[placeholder="اینجا بنویسید…"]'), 10000, 'doc textarea')
+  const ta = await switchToEdit(w, 'doc textarea')
   check('bug 1: doc textarea mounts', !!ta)
   // Sidebar lists populate on login without a manual re-select (bug 5).
   await waitFor(w, () => w.document.body.textContent.includes('گفت‌وگو') && w.document.body.textContent.includes('سند پروب'), 10000, 'sidebar lists')
@@ -389,7 +397,7 @@ async function main() {
 
   // ---- Mount 2 (reload): same stub DB, fresh page ----
   const m2 = await mountApp({ html, js }, stub, '#/doc/' + DOC_ID)
-  const ta2 = await waitFor(m2.w, () => m2.w.document.querySelector('textarea[placeholder="اینجا بنویسید…"]'), 10000, 'doc textarea after reload')
+  const ta2 = await switchToEdit(m2.w, 'doc textarea after reload')
   await waitFor(m2.w, () => ta2.value.length > 0, 10000, 'textarea filled after reload')
   check('bug 1: text survives reload', ta2.value === TEXT35, JSON.stringify(ta2.value))
   m2.dom.window.close()
@@ -432,7 +440,7 @@ async function main() {
   // then hit nothing).
   w.location.hash = '#/doc/' + DOC_ID
   w.dispatchEvent(new w.Event('hashchange'))
-  await waitFor(w, () => w.document.querySelector('textarea[placeholder="اینجا بنویسید…"]'), 10000, 'doc textarea on return')
+  await switchToEdit(w, 'doc textarea on return')
   const fileSection = await waitFor(
     w,
     () => [...w.document.querySelectorAll('section')].find((s) => s.isConnected && s.querySelector('h3')?.textContent.includes('فایل‌ها') && s.textContent.includes('گزارش پروب.pdf')),

@@ -443,6 +443,14 @@ async function waitFor(w, fn, timeoutMs = 10000, label = 'condition') {
   throw new Error('timeout waiting for ' + label + ' — screen shows: ' + JSON.stringify(screen))
 }
 
+// Phase 4: the doc view defaults to READ mode (no textarea). Switch to
+// EDIT mode first, then wait for the textarea to mount.
+async function switchToEdit(w, label) {
+  const toggle = await waitFor(w, () => w.document.querySelector('button[data-mode="edit"]'), 10000, 'mode toggle (' + label + ')')
+  if (toggle.getAttribute('aria-pressed') !== 'true') toggle.click()
+  return waitFor(w, () => w.document.querySelector('textarea[placeholder="\u0627\u06cc\u0646\u062c\u0627 \u0628\u0646\u0648\u06cc\u0633\u06cc\u062f\u2026"]'), 10000, label)
+}
+
 function setInput(w, el, value) {
   el.value = value
   el.dispatchEvent(new w.Event('input', { bubbles: true }))
@@ -507,11 +515,11 @@ async function main() {
   const mA = await mountApp({ html, js }, stub1, '#/doc/' + DOC_ID)
   const wA = mA.w
   allErrors.push(...mA.errors)
-  const taA = await waitFor(wA, () => wA.document.querySelector('textarea[placeholder="اینجا بنویسید…"]'), 10000, 'doc textarea (client A)')
+  const taA = await switchToEdit(wA, 'doc textarea (client A)')
   const mB = await mountApp({ html, js }, stub1, '#/doc/' + DOC_ID, fakeSession(ZAHRA_USER_ID, 'zahra@probe.test'))
   const wB = mB.w
   allErrors.push(...mB.errors)
-  const taB = await waitFor(wB, () => wB.document.querySelector('textarea[placeholder="اینجا بنویسید…"]'), 10000, 'doc textarea (client B)')
+  const taB = await switchToEdit(wB, 'doc textarea (client B)')
   check('B1: both clients open the empty doc', taA.value === '' && taB.value === '')
 
   // Divergent edits from the same base: B types her text, A types TEXT35.
@@ -535,7 +543,7 @@ async function main() {
   const mC = await mountApp({ html, js }, stub1, '#/doc/' + DOC_ID)
   const wC = mC.w
   allErrors.push(...mC.errors)
-  const taC = await waitFor(wC, () => wC.document.querySelector('textarea[placeholder="اینجا بنویسید…"]'), 10000, 'doc textarea (reload)')
+  const taC = await switchToEdit(wC, 'doc textarea (reload)')
   await waitFor(wC, () => taC.value.length > 0, 5000, 'reloaded text present')
   check('B1: after reload, full merged text returns', taC.value === merged, JSON.stringify(taC.value))
   // B1 versions: a saved version holds the same text.
@@ -559,7 +567,7 @@ async function main() {
   // Zahra opens the doc: same text.
   wD.location.hash = '#/doc/' + DOC_ID
   wD.dispatchEvent(new wD.Event('hashchange'))
-  const taD = await waitFor(wD, () => wD.document.querySelector('textarea[placeholder="اینجا بنویسید…"]'), 10000, 'doc textarea (Zahra)')
+  const taD = await switchToEdit(wD, 'doc textarea (Zahra)')
   await waitFor(wD, () => taD.value.length > 0, 5000, 'Zahra doc text present')
   check('B2: Zahra sees the same doc text', taD.value === merged, JSON.stringify(taD.value))
   // Project room: the personal message is NOT there; a project message is project-visible.
@@ -596,7 +604,7 @@ async function main() {
   const mE = await mountApp({ html, js }, stub2, '#/doc/' + DOC_ID)
   const wE = mE.w
   allErrors.push(...mE.errors)
-  const taE = await waitFor(wE, () => wE.document.querySelector('textarea[placeholder="اینجا بنویسید…"]'), 10000, 'doc textarea (B3)')
+  const taE = await switchToEdit(wE, 'doc textarea (B3)')
   await waitFor(wE, () => taE.value === S1, 5000, 'seeded doc text present')
   check('B3: seeded doc text loads', taE.value === S1)
 

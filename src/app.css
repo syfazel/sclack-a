@@ -663,3 +663,111 @@ html.simple-mode .ai-skeleton-bar,
 html.simple-mode .ai-spinner {
   animation: none;
 }
+
+/* فاز ۴ — سند غنی (مارک‌داون سبک، مشخصات faz4): حالت خواندن، جدول
+   گرم، پیوند بین سندها، نوار ابزار ویرایش، کلید خواندن/ویرایش. */
+.doc-read {
+  color: var(--ink, #1c1917);
+  font-size: 1rem;
+  line-height: 2;
+}
+.doc-read h1 {
+  font-size: 1.5rem;
+  font-weight: 800;
+  border-bottom: 2px solid #fde68a;
+  padding-bottom: 0.5rem;
+  margin-bottom: 1rem;
+}
+.doc-read h2 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin-top: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+.doc-read p {
+  margin-bottom: 0.75rem;
+}
+.doc-read ul,
+.doc-read ol {
+  padding-inline-start: 1.5rem;
+  margin-bottom: 0.75rem;
+}
+.doc-read ul {
+  list-style: disc;
+}
+.doc-read ul ::marker {
+  color: #d97706;
+}
+.doc-read ol {
+  list-style: decimal;
+}
+.doc-read li {
+  margin-bottom: 0.25rem;
+}
+.doc-table-wrap {
+  overflow-x: auto;
+  border: 1px solid #fde68a;
+  border-radius: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+.doc-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.doc-table th {
+  background: #fef3c7;
+  color: #92400e;
+  font-weight: 700;
+  text-align: start;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  line-height: 1.75;
+}
+.doc-table td {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  line-height: 1.75;
+  border-top: 1px solid #fef3c7;
+}
+.doc-table tbody tr:nth-child(even) {
+  background: #fffbeb;
+}
+.doc-wikilink {
+  color: #b45309;
+  text-decoration: underline;
+  text-decoration-color: #fcd34d;
+}
+.doc-wikilink:hover {
+  background: #fef3c7;
+  border-radius: 0.25rem;
+}
+.doc-wikilink-missing {
+  color: #57534e;
+  text-decoration: underline dotted;
+}
+.doc-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  background: var(--color-base-200, #f5f0e6);
+  border-radius: 0.75rem;
+  padding: 0.25rem;
+}
+.doc-mode-toggle .btn {
+  min-height: 2.75rem;
+}
+.doc-fade {
+  animation: docFade 150ms ease-out;
+}
+@keyframes docFade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .doc-fade {
+    animation: none;
+  }
+}
+html.simple-mode .doc-fade {
+  animation: none;
+}

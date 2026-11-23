@@ -144,9 +144,15 @@ export function makeAnchor(ytext, ydoc, start, end) {
   const e = Math.max(s, Math.min(end, text.length))
   const relStart = Y.createRelativePositionFromTypeIndex(ytext, s)
   const relEnd = Y.createRelativePositionFromTypeIndex(ytext, e)
+  // RelativePosition has NO .toJSON() in yjs 13.6 (the old call threw
+  // «s.toJSON is not a function» and killed every anchored comment —
+  // found by the Phase 4 probe; unanchored comments never hit this
+  // path, which is why probe-p01-b stayed green). The exported
+  // Y.relativePositionToJSON is the serializer that pairs with
+  // createRelativePositionFromJSON in resolveAnchor below.
   return {
-    start: relStart ? relStart.toJSON() : null,
-    end: relEnd ? relEnd.toJSON() : null,
+    start: relStart ? Y.relativePositionToJSON(relStart) : null,
+    end: relEnd ? Y.relativePositionToJSON(relEnd) : null,
     quote: text.slice(s, e).slice(0, 120)
   }
 }

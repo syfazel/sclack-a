@@ -329,6 +329,14 @@ async function waitFor(w, fn, timeoutMs = 10000, label = 'condition') {
   throw new Error('timeout waiting for ' + label)
 }
 
+// Phase 4: the doc view defaults to READ mode (no textarea). Switch to
+// EDIT mode first, then wait for the textarea to mount.
+async function switchToEdit(w, label) {
+  const toggle = await waitFor(w, () => w.document.querySelector('button[data-mode="edit"]'), 10000, 'mode toggle (' + label + ')')
+  if (toggle.getAttribute('aria-pressed') !== 'true') toggle.click()
+  return waitFor(w, () => w.document.querySelector('textarea[placeholder="\u0627\u06cc\u0646\u062c\u0627 \u0628\u0646\u0648\u06cc\u0633\u06cc\u062f\u2026"]'), 10000, label)
+}
+
 function setInput(w, el, value) {
   el.value = value
   el.dispatchEvent(new w.Event('input', { bubbles: true }))
@@ -361,7 +369,7 @@ async function runSearch(w, query) {
 }
 
 async function typeDocText(w, text) {
-  const ta = await waitFor(w, () => w.document.querySelector('textarea[placeholder="اینجا بنویسید…"]'), 10000, 'doc textarea')
+  const ta = await switchToEdit(w, 'doc textarea')
   for (const ch of text) {
     ta.value = ta.value + ch
     ta.dispatchEvent(new w.Event('input', { bubbles: true }))
