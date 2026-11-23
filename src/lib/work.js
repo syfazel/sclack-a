@@ -2,10 +2,11 @@ import { sb } from './supabase.js'
 import { auth, ws } from './store.svelte.js'
 import * as Y from 'yjs'
 import { encodeDocState, applyDocState } from './yjs-sync.js'
-import { createAutoDoc, createDoc, saveDocRow } from './docs.js'
+import { createAutoDoc, createDoc, saveDocRow, isMissingColumnError } from './docs.js'
 import { createProject } from './data.js'
 import { BUILTIN_TEMPLATES } from './templates.js'
 import {
+  buildSearchSnippet,
   escapeSearchPattern,
   nextTaskStatus,
   nextVersionNo
@@ -320,13 +321,28 @@ export async function searchWorkspace(query) {
     },
     {
       name: 'سندها',
-      run: () =>
-        sb
+      // فاز ۳: عنوان یا متن سند (docs.search_text) را می‌گردد. تا وقتی
+      // ستون search_text در دیتابیس زنده نیست (مهاجرت اجرا نشده)،
+      // کوئری title-or-search_text با خطای ستون ناموجود رد می‌شود —
+      // آن‌وقت بی‌صدا به کوئری فقط‌عنوان برمی‌گردیم (بدون partialError)،
+      // پس جست‌وجو دقیقاً مثل قبل کار می‌کند.
+      run: async () => {
+        const withText = await sb
           .from('docs')
-          .select('id, title, created_at, project_id, projects(name)')
-          .ilike('title', pattern)
+          .select('id, title, search_text, created_at, project_id, projects(name)')
+          .or('title.ilike.' + pattern + ',search_text.ilike.' + pattern)
           .order('created_at', { ascending: false })
           .limit(20)
+        if (withText.error && isMissingColumnError(withText.error)) {
+          return sb
+            .from('docs')
+            .select('id, title, created_at, project_id, projects(name)')
+            .ilike('title', pattern)
+            .order('created_at', { ascending: false })
+            .limit(20)
+        }
+        return withText
+      }
     },
     {
       name: 'فایل‌ها',
@@ -377,6 +393,12 @@ export async function searchWorkspace(query) {
     })
   }
   for (const d of byName['سندها'] || []) {
+    // نشان هم‌خوانی (فاز ۳، مشخصات گرافیکی): عنوان، متن، یا هر دو.
+    // snippet خالی یعنی متن هم‌خوان نیست؛ در برگشت به title-only
+    // (ستون نیست) همیشه فقط عنوان است.
+    const titleMatch = (d.title || '').toLowerCase().includes(q.toLowerCase())
+    const snippet = d.search_text ? buildSearchSnippet(d.search_text, q) : ''
+    const textMatch = snippet !== ''
     hits.push({
       kind: 'doc',
       kindLabel: 'سند',
@@ -384,7 +406,9 @@ export async function searchWorkspace(query) {
       title: d.title,
       place: d.projects?.name || 'پروژه',
       link: '#/doc/' + d.id,
-      at: d.created_at
+      at: d.created_at,
+      matchIn: titleMatch && textMatch ? 'both' : textMatch ? 'text' : 'title',
+      snippet
     })
   }
   for (const f of byName['فایل‌ها'] || []) {

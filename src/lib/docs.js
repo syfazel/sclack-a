@@ -2,6 +2,19 @@ import { sb } from './supabase.js'
 import { auth, ws } from './store.svelte.js'
 import * as Y from 'yjs'
 import { encodeDocState, applyDocState } from './yjs-sync.js'
+import { SEARCH_TEXT_MAX_CHARS } from './extract.js'
+
+// نگهبان ستون search_text (فاز ۳): مهاجرت زنده هنوز اجرا نشده و کدِ
+// دیپلوی‌شده پیش از آن زنده می‌شود؛ تا وقتی ستون نیست، نوشتن/خواندنش
+// هرگز نباید ذخیرهٔ سند یا جست‌وجو را بشکند. فقط خطای «ستون وجود ندارد»
+// (کد 42703 یا پیام undefined column) بی‌صدا رد می‌شود؛ هر خطای دیگری
+// مثل قبل پرتاب می‌شود.
+export function isMissingColumnError(err) {
+  if (!err) return false
+  if (err.code === '42703') return true
+  const m = err.message || String(err)
+  return /undefined column/i.test(m) || /column .* does not exist/i.test(m)
+}
 
 // Docs, comments and files (D4). Reads/writes only what RLS allows the
 // signed-in member to see. No test data is ever written here.
@@ -107,6 +120,16 @@ export async function saveDocRow(docRow, ydoc, lastSavedB64) {
     .update({ custom_fields: cf, updated_at: new Date().toISOString() })
     .eq('id', docRow.id)
   if (uerr) throw uerr
+  // فاز ۳: متن سادهٔ سند را هم در docs.search_text بنویس تا جست‌وجوی
+  // سراسری متن را پیدا کند. این نوشتن از به‌روزرسانی اصلی جداست تا اگر
+  // ستون هنوز در دیتابیس زنده نیست (مهاجرت اجرا نشده)، ذخیرهٔ سند
+  // نشکند — فقط خطای ستون ناموجود بی‌صدا رد می‌شود (نگهبان بالا).
+  const plain = ydoc.getText('content').toString().slice(0, SEARCH_TEXT_MAX_CHARS)
+  const { error: serr } = await sb
+    .from('docs')
+    .update({ search_text: plain })
+    .eq('id', docRow.id)
+  if (serr && !isMissingColumnError(serr)) throw serr
   return b64
 }
 

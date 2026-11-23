@@ -378,7 +378,9 @@ async function main() {
   }
   await sleep(3500) // autosave debounce is 2 s
   check('bug 1: autosave PATCHed the docs row', stub.calls.docPatch.length >= 1, 'patches: ' + stub.calls.docPatch.length)
-  const lastPatch = stub.calls.docPatch[stub.calls.docPatch.length - 1]
+  // Phase 3: saveDocRow now PATCHes twice (snapshot, then search_text) —
+  // the snapshot is the last patch carrying custom_fields.yjs_state_b64.
+  const lastPatch = [...stub.calls.docPatch].reverse().find((p) => p.body?.custom_fields?.yjs_state_b64)
   const savedB64 = lastPatch?.body?.custom_fields?.yjs_state_b64
   check('bug 1: saved snapshot is non-empty (not AAA=)', !!savedB64 && savedB64 !== 'AAA=', savedB64)
   const savedText = savedB64 ? docTextFromB64(savedB64) : ''

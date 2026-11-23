@@ -77,6 +77,30 @@ export function nextVersionNo(existingNos) {
   return Math.max(...existingNos) + 1
 }
 
+// ---------- Phase 3: doc full-text search ----------
+// Cap for docs.search_text (decision D2): the plain Yjs text, capped.
+// Long docs still save — only the indexed copy is capped.
+export const SEARCH_TEXT_MAX_CHARS = 20000
+
+// A ~120-char window around the first case-insensitive match of `query`
+// in `text` (newlines collapsed to spaces, for one-line rendering).
+// '…' marks a cut end. '' when there is no match — the caller then
+// shows no snippet instead of inventing one.
+export function buildSearchSnippet(text, query, windowSize = 120) {
+  const flat = String(text || '').replace(/\s+/g, ' ')
+  const q = String(query || '').trim()
+  if (!flat || !q) return ''
+  const idx = flat.toLowerCase().indexOf(q.toLowerCase())
+  if (idx < 0) return ''
+  const half = Math.floor(windowSize / 2)
+  const start = Math.max(0, idx - half)
+  const end = Math.min(flat.length, idx + q.length + half)
+  let out = flat.slice(start, end)
+  if (start > 0) out = '…' + out
+  if (end < flat.length) out = out + '…'
+  return out
+}
+
 // Escape PostgREST ilike wildcards (Space bug #4: '%' and '_' were treated
 // as wildcards in global search). Backslash first, then % and _.
 export function escapeSearchPattern(q) {
