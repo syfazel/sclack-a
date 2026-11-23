@@ -11,15 +11,30 @@
   let showForgot = $state(false)
   let forgotBusy = $state(false)
 
-  // تیزر ورودی ۸ ثانیه‌ای (۰٫۱۵٫۰) — «چهار نقطه، یک خط».
-  // هر دفعه که لندینگ باز می‌شود پخش می‌شود، بدون دکمهٔ رد کردن؛
+  // تیزر ورودی ۳۰ ثانیه‌ای (۰٫۱۶٫۰) — «یک خط، نوزده ایستگاه».
+  // هر دفعه که لندینگ باز می‌شود پخش می‌شود، با دکمهٔ ظریف «رد کردن»
+  // (دستور یاسین ۲۳ نوامبر ~۱۶:۳۱ — برگرداندنِ «بدون رد کردن» نسخهٔ ۱)؛
   // با prefers-reduced-motion یا «حالت ساده» رد می‌شود و ورود
   // مستقیم نشان داده می‌شود. ساعت این‌جاست تا کارت ورود و نشانگر
-  // فیلد ایمیل هم با پرده‌ها هماهنگ باشند.
+  // فیلد ایمیل هم با پرده‌ها هماهنگ باشند. teaserDone = تیزر تمام شد
+  // (طبیعی یا با رد کردن)؛ teaserCompleted = فقط پایان طبیعی ۳۰ ثانیه‌ای
+  // (نشانگر «مهر جیگری» فقط پس از پایان طبیعی می‌آید).
   let teaserActive = $state(false)
   let teaserBeat = $state(0)
   let teaserDone = $state(false)
+  let teaserCompleted = $state(false)
   let emailFocused = $state(false)
+  let teaserTimers = []
+
+  function clearTeaserTimers() {
+    teaserTimers.forEach(clearTimeout)
+    teaserTimers = []
+  }
+
+  function skipTeaser() {
+    clearTeaserTimers()
+    teaserDone = true
+  }
 
   function teaserAllowed() {
     if (displayPrefs.simple) return false
@@ -28,15 +43,20 @@
   }
 
   $effect(() => {
-    if (!teaserAllowed()) {
+    if (!teaserAllowed() || teaserDone) {
       teaserActive = false
       return
     }
     teaserActive = true
-    const timers = []
-    for (let b = 1; b <= 7; b++) timers.push(setTimeout(() => { teaserBeat = b }, b * 1000))
-    timers.push(setTimeout(() => { teaserDone = true }, 8000))
-    return () => timers.forEach(clearTimeout)
+    teaserTimers = []
+    for (let b = 1; b <= 29; b++) teaserTimers.push(setTimeout(() => { teaserBeat = b }, b * 1000))
+    teaserTimers.push(
+      setTimeout(() => {
+        teaserDone = true
+        teaserCompleted = true
+      }, 30000)
+    )
+    return () => clearTeaserTimers()
   })
 
   function setMsg(text, kind) {
@@ -109,12 +129,12 @@
     {/await}
   </div>
   {#if teaserActive && !teaserDone}
-    <IntroTeaser beat={teaserBeat} />
+    <IntroTeaser beat={teaserBeat} onskip={skipTeaser} />
   {/if}
   <div
     class="card glass-card glass-card-landing teaser-card relative z-10 w-full max-w-sm shrink-0 shadow-xl {teaserActive &&
     !teaserDone &&
-    teaserBeat < 6
+    teaserBeat < 27
       ? 'teaser-card-hidden'
       : ''}"
   >
@@ -149,9 +169,10 @@
             onfocus={() => (emailFocused = true)}
             onblur={() => (emailFocused = false)}
           />
-          {#if teaserDone && !emailFocused && !email}
+          {#if teaserCompleted && !emailFocused && !email}
             <!-- پایان تیزر («مهر جیگری»): نقطهٔ جیگری این‌جا نشانگر تایپ
-                 است؛ با فوکوس یا تایپ، نشانگر واقعی جای آن را می‌گیرد. -->
+                 است؛ با فوکوس یا تایپ، نشانگر واقعی جای آن را می‌گیرد.
+                 پس از «رد کردن» نشانگر نمی‌آید — تیزر کامل دیده نشده. -->
             <span class="teaser-caret" data-teaser-caret aria-hidden="true"></span>
           {/if}
         </div>
@@ -231,7 +252,7 @@
 </div>
 
 <style>
-  /* تیزر ورودی (۰٫۱۵٫۰): کارت تا پردهٔ ۶ پنهان است و با آن می‌نشیند. */
+  /* تیزر ورودی (۰٫۱۶٫۰): کارت تا پردهٔ پایان (۲۷) پنهان است و با آن می‌نشیند. */
   .teaser-card {
     transition:
       opacity 1.2s ease,

@@ -1,16 +1,24 @@
-// Intro teaser probe (scripts/probe-teaser.mjs) — 0.15.0 تیزر ورودی لندینگ.
+// Intro teaser probe v2 (scripts/probe-teaser.mjs) — 0.16.0 تیزر ورودی لندینگ
+// «یک خط، نوزده ایستگاه» (plan-teaser-v2.md §6/§7/§9/§10).
 //
 // Mounts the REAL built bundle in jsdom with a stubbed Supabase backend
-// (signed-out, so the landing renders) and asserts the teaser spec from
-// plan-teaser-intro.md:
+// (signed-out, so the landing renders) and asserts:
 //
-//   * تیزر ۸ ثانیه‌ای روی لندینگ mount می‌شود؛ پرده‌ها ۰ تا ۷ به ترتیب
-//     می‌آیند؛ بعد از ۸ ثانیه overlay می‌رود، کارت ورود کامل است و
-//     نشانگر در فیلد ایمیل چشمک می‌زند.
-//   * کارت ورود تا پردهٔ ۶ پنهان است.
+//   * تیزر ۳۰ ثانیه‌ای روی لندینگ mount می‌شود؛ پرده‌ها ۰ تا ۲۹ به ترتیب
+//     می‌آیند؛ پرده‌ها (data-act) ۰ تا ۶ به ترتیب؛ هر ۱۹ ایستگاه با برچسب
+//     فارسی‌اش دیده می‌شود؛ در هر پرده دقیقاً یک قهرمان (station-hero)
+//     هست (ایستگاه‌های ۱، ۵، ۱۰، ۱۶، ۱۹).
+//   * دکمهٔ ظریف «رد کردن» هست؛ کلیک آن تیزر را همان‌جا تمام می‌کند،
+//     کارت ورود می‌نشیند و نشانگر نمی‌آید (پایان طبیعی نبوده).
+//   * بعد از ۳۰ ثانیه overlay می‌رود، کارت ورود کامل است و نشانگر در
+//     فیلد ایمیل چشمک می‌زند.
+//   * کارت ورود تا پردهٔ ۲۷ پنهان است.
+//   * دو کلیپ ویدیویی (clip-a-light.mp4 لوپِ پس‌زمینه، clip-b-finale.mp4
+//     پنجرهٔ ۷–۱۰ ثانیه) با src پایه‌محور حاضرند؛ با خطای لود، همان
+//     پرده به‌صورت کدی برمی‌گردد (fallback صریح).
 //   * با prefers-reduced-motion یا «حالت ساده» تیزر رد می‌شود و ورود
 //     مستقیم نشان داده می‌شود (بدون نشانگر).
-//   * بدون دکمهٔ رد کردن؛ هیچ صحنهٔ سه‌بعدی تازه‌ای نیست.
+//   * هیچ صحنهٔ سه‌بعدی تازه‌ای نیست.
 //
 // No live Supabase, no test data in live tables. Same harness shape as
 // probe-ux-rebuild.mjs (jsdom mount + eval'd bundle + stub fetch).
@@ -20,11 +28,21 @@
 //   VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_PLACEHOLDER-NOT-A-REAL-KEY \
 //   npm run build && node scripts/probe-teaser.mjs
 import { JSDOM, VirtualConsole } from 'jsdom'
-import { readFileSync, readdirSync } from 'node:fs'
+import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs'
 
 const BASE_URL = 'https://probe-ref.supabase.co'
-// Bundle gate from probe-ux-rebuild: 0.13.0 live (651,416) + 10%.
-const BUNDLE_CAP = Math.floor(651416 * 1.1)
+// Bundle gate rebased to the 0.15.0 live bundle (696,272) + 10%.
+const BUNDLE_CAP = Math.floor(696272 * 1.1)
+
+const STATIONS = [
+  [1, 'پیام زنده'], [2, 'منشن'], [3, 'ترد'], [4, 'پیام شخصی'],
+  [5, 'سند مشترک'], [6, 'سند غنی'], [7, 'سند تودرتو'], [8, 'نظر'], [9, 'نسخه‌ها'],
+  [10, 'چت می‌شود کار'], [11, 'کانبان'], [12, 'زیروظیفه و چک‌لیست'],
+  [13, 'نگهبان مهلت‌ها'], [14, 'برنامه‌ریز'],
+  [15, 'بودجه و زمان‌بندی'], [16, 'کاربرگ ۴۶ سوالی'], [17, 'جست‌وجو'],
+  [18, 'خانه و نبض تیم'], [19, 'دستیار میوز']
+]
+const HEROES = [1, 5, 10, 16, 19]
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 let failures = 0
@@ -36,36 +54,54 @@ function check(name, cond, extra) {
   }
 }
 
-// ---------- static: sources + version ----------
+// ---------- static: sources + version + clips on disk ----------
 {
   const teaserSrc = readFileSync(new URL('../src/components/IntroTeaser.svelte', import.meta.url), 'utf8')
   const loginSrc = readFileSync(new URL('../src/components/Login.svelte', import.meta.url), 'utf8')
   const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
-  check('static: version is 0.15.0', pkg.version === '0.15.0', 'version ' + pkg.version)
-  check('static: IntroTeaser exists with data-teaser + data-beat',
-    teaserSrc.includes('data-teaser') && teaserSrc.includes('data-beat'))
-  check('static: 8 beats — stage classes beat-0..beat-7',
-    [0, 1, 2, 3, 4, 5, 6, 7].every((i) => teaserSrc.includes('beat-' + i)))
-  check('static: line + 4 dots + 3 glass cards + caret rect in the teaser',
-    teaserSrc.includes('teaser-line') && teaserSrc.includes('teaser-dot-4') &&
-    teaserSrc.includes('teaser-card-3') && teaserSrc.includes('teaser-caret-rect'))
-  check('static: Login mounts IntroTeaser',
-    loginSrc.includes("import IntroTeaser from './IntroTeaser.svelte'") && loginSrc.includes('<IntroTeaser'))
-  check('static: Login clock — beats at 1s steps, done at 8000ms',
-    loginSrc.includes('b * 1000') && loginSrc.includes('8000'))
+  check('static: version is 0.16.0', pkg.version === '0.16.0', 'version ' + pkg.version)
+  check('static: IntroTeaser exists with data-teaser + data-beat + data-act',
+    teaserSrc.includes('data-teaser') && teaserSrc.includes('data-beat') && teaserSrc.includes('data-act'))
+  check('static: all 19 stations present (data-station 1..19)',
+    STATIONS.every(([n]) => teaserSrc.includes(`data-station="${n}"`)))
+  check('static: all 19 Persian labels present',
+    STATIONS.every(([, label]) => teaserSrc.includes(label)),
+    'missing: ' + STATIONS.filter(([, l]) => !teaserSrc.includes(l)).map(([, l]) => l).join(', '))
+  check('static: hero + background station classes exist',
+    teaserSrc.includes('station-hero') && teaserSrc.includes('station-bg'))
+  check('static: skip button (data-teaser-skip + «رد کردن» + onskip prop)',
+    teaserSrc.includes('data-teaser-skip') && teaserSrc.includes('رد کردن') && teaserSrc.includes('onskip'))
+  check('static: Login passes onskip and skips the teaser',
+    loginSrc.includes('onskip={skipTeaser}') && loginSrc.includes('function skipTeaser'))
+  check('static: Login clock — beats 1..29 at 1s steps, done at 30000ms',
+    loginSrc.includes('b <= 29') && loginSrc.includes('b * 1000') && loginSrc.includes('30000'))
+  check('static: login card hidden until beat 27; caret only on natural end (teaserCompleted)',
+    loginSrc.includes('teaserBeat < 27') && loginSrc.includes('teaserCompleted'))
+  check('static: video A (looping light bg) + video B (finale window 7-10), base-aware src',
+    teaserSrc.includes('data-teaser-video-a') && teaserSrc.includes('clip-a-light.mp4') &&
+    teaserSrc.includes('data-teaser-video-b') && teaserSrc.includes('clip-b-finale.mp4') &&
+    teaserSrc.includes('data-finale-window="7-10"') &&
+    teaserSrc.includes('import.meta.env.BASE_URL') && teaserSrc.includes('loop'))
+  check('static: video error fallbacks (onerror → hide clip)',
+    (teaserSrc.match(/onerror=/g) || []).length >= 2 &&
+    teaserSrc.includes('videoAError') && teaserSrc.includes('videoBError'))
   check('static: reduced-motion + simple-mode skip the teaser',
     loginSrc.includes('prefers-reduced-motion') && loginSrc.includes('displayPrefs.simple'))
   check('static: email caret after the teaser (data-teaser-caret)',
     loginSrc.includes('data-teaser-caret'))
-  check('static: no skip button anywhere in the teaser',
-    !teaserSrc.toLowerCase().includes('skip') && !teaserSrc.includes('رد کردن'))
-  check('static: no new 3D scene — teaser is SVG/CSS only',
+  check('static: no new 3D scene — teaser is SVG/CSS + video only',
     (() => {
       // The header comment names HeroScene (it stays untouched behind
       // the teaser) — check the code, not the comment.
       const code = teaserSrc.replace(/<!--[\s\S]*?-->/g, '')
       return !code.includes('three') && !code.includes('graphics.js') && !code.includes('HeroScene')
     })())
+  for (const [file, minBytes] of [['clip-a-light.mp4', 1000000], ['clip-b-finale.mp4', 1000000]]) {
+    const p = new URL('../public/teaser/' + file, import.meta.url)
+    check(`static: clip on disk public/teaser/${file} (>1MB)`,
+      existsSync(p) && statSync(p).size > minBytes,
+      existsSync(p) ? 'bytes ' + statSync(p).size : 'missing')
+  }
 }
 
 // ---------- mount harness (trimmed copy of probe-ux-rebuild) ----------
@@ -165,69 +201,145 @@ function signInFormRenders(w) {
 async function main() {
   const bundle = loadBundle()
   console.log('bundle:', bundle.jsFile, bundle.js.length, 'bytes')
-  check('bundle: probe bundle within the 0.13.0 + 10% gate', bundle.js.length <= BUNDLE_CAP, 'bytes ' + bundle.js.length)
+  check('bundle: probe bundle within the 0.15.0 + 10% gate', bundle.js.length <= BUNDLE_CAP, 'bytes ' + bundle.js.length)
 
-  // ---- Mount 1: default — the teaser plays through all 8 beats ----
+  // ---- Mount 1: default — the full 30s teaser ----
   const m1 = await mountApp(bundle, { noSession: true })
   const w1 = m1.dom.window
   await waitFor(w1, () => w1.document.querySelector('[data-teaser]'), 10000, 'teaser overlay')
-  check('mount: teaser overlay mounts on the landing', !!w1.document.querySelector('[data-teaser]'))
-  check('mount: teaser starts at beat 0',
-    w1.document.querySelector('[data-teaser]')?.getAttribute('data-beat') === '0')
-  check('mount: login card is hidden while the teaser plays (beats 0-5)',
+  const root1 = () => w1.document.querySelector('[data-teaser]')
+  check('mount: teaser overlay mounts on the landing', !!root1())
+  check('mount: teaser starts at beat 0, act 0',
+    root1()?.getAttribute('data-beat') === '0' && root1()?.getAttribute('data-act') === '0')
+  check('mount: skip button («رد کردن») is present',
+    !!w1.document.querySelector('[data-teaser-skip]') &&
+    w1.document.querySelector('[data-teaser-skip]')?.textContent.trim() === 'رد کردن')
+  check('mount: video A (ambient light loop) present with its src',
+    !!w1.document.querySelector('[data-teaser-video-a]') &&
+    (w1.document.querySelector('[data-teaser-video-a]')?.getAttribute('src') || '').includes('clip-a-light.mp4'))
+  check('mount: login card is hidden while the teaser plays (beats 0-26)',
     !!w1.document.querySelector('.teaser-card-hidden'))
   check('mount: sign-in form is in the DOM behind the teaser', signInFormRenders(w1))
 
-  // Poll the beat attribute until the overlay unmounts (8s timeline).
-  const seen = []
-  const deadline = Date.now() + 12000
+  // Video A fallback: a load error hides the clip (code scene continues).
+  {
+    const vA = w1.document.querySelector('[data-teaser-video-a]')
+    vA.dispatchEvent(new w1.Event('error'))
+    await sleep(250)
+    check('mount: video A fallback — clip hidden after load error, fallback flag set',
+      !w1.document.querySelector('[data-teaser-video-a]') && root1()?.hasAttribute('data-video-a-fallback'))
+  }
+
+  // Poll the whole 30s timeline: stations, beats, acts, heroes, video B.
+  const seenStations = new Set()
+  const labelsOk = new Set()
+  const seenHeroes = new Set()
+  const seenBeats = []
+  const seenActs = []
+  let videoBSeen = false
+  let videoBWindow = null
+  let videoBFallbackOk = false
+  const deadline = Date.now() + 36000
   while (Date.now() < deadline) {
-    const el = w1.document.querySelector('[data-teaser]')
+    const el = root1()
     if (el) {
       const b = el.getAttribute('data-beat')
-      if (b !== null && (seen.length === 0 || seen[seen.length - 1] !== b)) seen.push(b)
-    } else if (seen.includes('7')) {
+      if (b !== null && (seenBeats.length === 0 || seenBeats[seenBeats.length - 1] !== b)) seenBeats.push(b)
+      const a = el.getAttribute('data-act')
+      if (a !== null && (seenActs.length === 0 || seenActs[seenActs.length - 1] !== a)) seenActs.push(a)
+      for (const st of w1.document.querySelectorAll('[data-station]')) {
+        const n = Number(st.getAttribute('data-station'))
+        seenStations.add(n)
+        const label = STATIONS.find(([id]) => id === n)?.[1]
+        if (label && st.textContent.includes(label)) labelsOk.add(n)
+        if (st.classList.contains('station-hero')) seenHeroes.add(n)
+      }
+      const vB = w1.document.querySelector('[data-teaser-video-b]')
+      if (vB && !videoBSeen) {
+        videoBSeen = true
+        videoBWindow = vB.getAttribute('data-finale-window')
+        // Video B fallback: a load error hides the clip (code finale continues).
+        vB.dispatchEvent(new w1.Event('error'))
+        await sleep(250)
+        videoBFallbackOk = !w1.document.querySelector('[data-teaser-video-b]') &&
+          !!w1.document.querySelector('[data-finale-code]') &&
+          root1()?.hasAttribute('data-video-b-fallback')
+      }
+    } else if (seenBeats.includes('29')) {
       break
     }
     await sleep(200)
   }
-  check('mount: beats arrive in order 0..7', seen.join(',') === '0,1,2,3,4,5,6,7', 'seen: ' + seen.join(','))
+  check('mount: all 19 stations appear with their labels',
+    seenStations.size === 19 && STATIONS.every(([n]) => seenStations.has(n)),
+    'seen: ' + [...seenStations].sort((a, b) => a - b).join(','))
+  check('mount: each station shows its Persian label',
+    labelsOk.size === 19 && STATIONS.every(([n]) => labelsOk.has(n)),
+    'labels verified: ' + [...labelsOk].sort((a, b) => a - b).join(','))
+  check('mount: beats arrive in order 0..29',
+    seenBeats.join(',') === Array.from({ length: 30 }, (_, i) => String(i)).join(','),
+    'seen: ' + seenBeats.join(','))
+  check('mount: acts arrive in order 0..6',
+    seenActs.join(',') === '0,1,2,3,4,5,6', 'seen: ' + seenActs.join(','))
+  check('mount: one hero per act — heroes are stations 1, 5, 10, 16, 19',
+    HEROES.every((n) => seenHeroes.has(n)) && seenHeroes.size === 5,
+    'heroes seen: ' + [...seenHeroes].sort((a, b) => a - b).join(','))
+  check('mount: finale video B appears with the 7-10s window',
+    videoBSeen && videoBWindow === '7-10', 'window: ' + videoBWindow)
+  check('mount: video B fallback — clip hidden after load error, code finale shown',
+    videoBFallbackOk)
   await waitFor(w1, () => !w1.document.querySelector('[data-teaser]'), 5000, 'overlay gone')
-  check('mount: overlay is gone after 8s', !w1.document.querySelector('[data-teaser]'))
+  check('mount: overlay is gone after 30s', !w1.document.querySelector('[data-teaser]'))
   check('mount: login card is fully visible after the teaser',
     !!w1.document.querySelector('.glass-card-landing') && !w1.document.querySelector('.teaser-card-hidden'))
   check('mount: caret blinks in the email field after the teaser',
     !!w1.document.querySelector('[data-teaser-caret]'))
   check('mount: sign-in form renders after the teaser', signInFormRenders(w1))
-  const realErrors1 = m1.errors.filter((e) => !/websocket|realtime/i.test(e))
+  const realErrors1 = m1.errors.filter((e) => !/websocket|realtime|HTMLMediaElement.*play\(\)/i.test(e))
   check('mount: 0 non-Realtime JS errors on the teaser mount', realErrors1.length === 0, JSON.stringify(realErrors1.slice(0, 3)))
   m1.dom.window.close()
 
-  // ---- Mount 2: prefers-reduced-motion — teaser skipped ----
-  const m2 = await mountApp(bundle, { noSession: true, reducedMotion: true })
+  // ---- Mount 2: skip — clicking «رد کردن» ends the teaser immediately ----
+  const m2 = await mountApp(bundle, { noSession: true })
   const w2 = m2.dom.window
-  await waitFor(w2, () => w2.document.body.textContent.includes('ورود'), 10000, 'login form')
-  check('reduced-motion: no teaser overlay', !w2.document.querySelector('[data-teaser]'))
-  check('reduced-motion: login card is visible immediately',
+  await waitFor(w2, () => w2.document.querySelector('[data-teaser-skip]'), 10000, 'skip button')
+  check('skip: skip button is present at the start', !!w2.document.querySelector('[data-teaser-skip]'))
+  w2.document.querySelector('[data-teaser-skip]').click()
+  await waitFor(w2, () => !w2.document.querySelector('[data-teaser]'), 5000, 'overlay gone after skip')
+  check('skip: overlay is gone right after clicking «رد کردن»', !w2.document.querySelector('[data-teaser]'))
+  check('skip: login card is fully visible after skipping',
     !!w2.document.querySelector('.glass-card-landing') && !w2.document.querySelector('.teaser-card-hidden'))
-  check('reduced-motion: no caret (teaser never played)', !w2.document.querySelector('[data-teaser-caret]'))
-  check('reduced-motion: sign-in form renders', signInFormRenders(w2))
-  const realErrors2 = m2.errors.filter((e) => !/websocket|realtime/i.test(e))
-  check('reduced-motion: 0 non-Realtime JS errors', realErrors2.length === 0, JSON.stringify(realErrors2.slice(0, 3)))
+  check('skip: no caret (the teaser was skipped, not completed)', !w2.document.querySelector('[data-teaser-caret]'))
+  check('skip: sign-in form renders after skipping', signInFormRenders(w2))
+  const realErrors2 = m2.errors.filter((e) => !/websocket|realtime|HTMLMediaElement.*play\(\)/i.test(e))
+  check('skip: 0 non-Realtime JS errors', realErrors2.length === 0, JSON.stringify(realErrors2.slice(0, 3)))
   m2.dom.window.close()
 
-  // ---- Mount 3: simple mode — teaser skipped ----
-  const m3 = await mountApp(bundle, { noSession: true, simpleMode: true })
+  // ---- Mount 3: prefers-reduced-motion — teaser skipped ----
+  const m3 = await mountApp(bundle, { noSession: true, reducedMotion: true })
   const w3 = m3.dom.window
   await waitFor(w3, () => w3.document.body.textContent.includes('ورود'), 10000, 'login form')
-  check('simple-mode: no teaser overlay', !w3.document.querySelector('[data-teaser]'))
-  check('simple-mode: login card is visible immediately',
+  check('reduced-motion: no teaser overlay', !w3.document.querySelector('[data-teaser]'))
+  check('reduced-motion: login card is visible immediately',
     !!w3.document.querySelector('.glass-card-landing') && !w3.document.querySelector('.teaser-card-hidden'))
-  check('simple-mode: no caret (teaser never played)', !w3.document.querySelector('[data-teaser-caret]'))
-  check('simple-mode: sign-in form renders', signInFormRenders(w3))
-  const realErrors3 = m3.errors.filter((e) => !/websocket|realtime/i.test(e))
-  check('simple-mode: 0 non-Realtime JS errors', realErrors3.length === 0, JSON.stringify(realErrors3.slice(0, 3)))
+  check('reduced-motion: no caret (teaser never played)', !w3.document.querySelector('[data-teaser-caret]'))
+  check('reduced-motion: sign-in form renders', signInFormRenders(w3))
+  const realErrors3 = m3.errors.filter((e) => !/websocket|realtime|HTMLMediaElement.*play\(\)/i.test(e))
+  check('reduced-motion: 0 non-Realtime JS errors', realErrors3.length === 0, JSON.stringify(realErrors3.slice(0, 3)))
   m3.dom.window.close()
+
+  // ---- Mount 4: simple mode — teaser skipped ----
+  const m4 = await mountApp(bundle, { noSession: true, simpleMode: true })
+  const w4 = m4.dom.window
+  await waitFor(w4, () => w4.document.body.textContent.includes('ورود'), 10000, 'login form')
+  check('simple-mode: no teaser overlay', !w4.document.querySelector('[data-teaser]'))
+  check('simple-mode: login card is visible immediately',
+    !!w4.document.querySelector('.glass-card-landing') && !w4.document.querySelector('.teaser-card-hidden'))
+  check('simple-mode: no caret (teaser never played)', !w4.document.querySelector('[data-teaser-caret]'))
+  check('simple-mode: sign-in form renders', signInFormRenders(w4))
+  const realErrors4 = m4.errors.filter((e) => !/websocket|realtime|HTMLMediaElement.*play\(\)/i.test(e))
+  check('simple-mode: 0 non-Realtime JS errors', realErrors4.length === 0, JSON.stringify(realErrors4.slice(0, 3)))
+  m4.dom.window.close()
 
   console.log(failures === 0 ? 'ALL TEASER PROBES PASSED' : `${failures} PROBE(S) FAILED`)
   process.exit(failures === 0 ? 0 : 1)
