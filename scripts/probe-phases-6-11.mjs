@@ -13,8 +13,10 @@ import { JSDOM, VirtualConsole } from 'jsdom'
 import { readFileSync, readdirSync } from 'node:fs'
 import { countRooyeshFields, formCompletion, validateFormPercents, emptyFormAnswers, FORM_ROOYESH_46 } from '../src/lib/form-rooyesh.js'
 import { RULES_55, countRules, rulesByChapter, rulesForSection, unmappedRules } from '../src/lib/rules-aim.js'
-import { computeBudget, computeBurndown, computeGantt, GRANT_RIALLS, buildTaskTree, taskAncestors, validateTaskParent, taskParentOptions } from '../src/lib/extract.js'
+import { computeBudget, computeBurndown, computeGantt, GRANT_RIALLS, buildTaskTree, taskAncestors, validateTaskParent, taskParentOptions, nextVersionNo } from '../src/lib/extract.js'
 import { BUILTIN_TEMPLATES } from '../src/lib/templates.js'
+import * as Y from 'yjs'
+import { encodeDocState, applyDocState } from '../src/lib/yjs-sync.js'
 
 const BASE_URL = 'https://probe-ref.supabase.co'
 const USER_ID = '11111111-1111-1111-1111-111111111111'
@@ -704,6 +706,103 @@ async function main() {
 
     const realErrors = m.errors.filter((e) => !/websocket|realtime/i.test(e))
     check('phase 8: 0 non-Realtime JS errors on the mount', realErrors.length === 0, JSON.stringify(realErrors.slice(0, 3)))
+    m.dom.window.close()
+  }
+
+  // ---------- phase 9: versions — diagnosis first, then fix ----------
+  // Diagnosis (read before writing): saveVersion / listVersions /
+  // restoreVersion in work.js, VersionsPanel.svelte, the versions RLS in
+  // w1-rls.sql (2 policies: select member + insert own; no update/delete,
+  // by design) and DocView (panel mounts whenever ydoc exists, read and
+  // edit alike) are all present and wired on paper. The probe below is
+  // the real check: seeded version rows with REAL Yjs snapshots must
+  // list, preview, save a new version from an edit, and restore.
+  section('phase 9 pure: version numbering + snapshot round-trip')
+  check('phase 9 pure: nextVersionNo starts at 1, then max+1',
+    nextVersionNo([]) === 1 && nextVersionNo([1, 2, 5]) === 6 && nextVersionNo([3]) === 4)
+  check('phase 9 pure: Yjs snapshot round-trips Persian text', (() => {
+    const d = new Y.Doc()
+    d.getText('content').insert(0, 'متن نسخهٔ یک')
+    const d2 = new Y.Doc()
+    applyDocState(d2, encodeDocState(d), 'version')
+    return d2.getText('content').toString() === 'متن نسخهٔ یک'
+  })())
+  check('phase 9 pure: empty snapshot encodes to a decodable state', (() => {
+    const d = new Y.Doc()
+    const d2 = new Y.Doc()
+    return applyDocState(d2, encodeDocState(d), 'version') && d2.getText('content').toString() === ''
+  })())
+
+  section('phase 9 DOM: versions list, preview, save, restore')
+  {
+    const db = makeDb()
+    const stub = makeStub(db)
+    function snap(text) {
+      const d = new Y.Doc()
+      if (text) d.getText('content').insert(0, text)
+      return encodeDocState(d)
+    }
+    db.versions.push(
+      { id: 'v1', doc_id: DOC_A_ID, version_no: 1, snapshot_ref: snap('متن نسخهٔ یک'), author_id: MEMBER_ID, note: 'اولین', created_at: '2026-11-20T10:00:00.000Z' },
+      { id: 'v2', doc_id: DOC_A_ID, version_no: 2, snapshot_ref: snap('متن نسخهٔ دو'), author_id: MEMBER_ID, note: null, created_at: '2026-11-21T10:00:00.000Z' }
+    )
+    const m = await mountApp({ html, js }, stub, '#/doc/' + DOC_A_ID)
+    const { w } = m
+    w.confirm = () => true
+    await waitFor(w, () => w.document.body.textContent.includes('نسخه‌ها'), 10000, 'versions panel')
+    const versionItems = () => [...w.document.querySelectorAll('li')].filter((li) => li.textContent.includes('نسخهٔ'))
+    await waitFor(w, () => versionItems().length === 2, 10000, '2 seeded versions listed')
+
+    check('phase 9: seeded versions v1 + v2 both listed',
+      versionItems().length === 2)
+    check('phase 9: newest first (v2 above v1)',
+      versionItems()[0].textContent.includes('نسخهٔ ۲') && versionItems()[1].textContent.includes('نسخهٔ ۱'))
+    check('phase 9: version note renders',
+      versionItems()[1].textContent.includes('اولین'))
+
+    // Preview v1 → the snapshot text shows.
+    const v1item = versionItems().find((li) => li.textContent.includes('نسخهٔ ۱'))
+    const previewBtn = [...v1item.querySelectorAll('button')].find((b) => b.textContent.includes('دیدن متن'))
+    previewBtn.click()
+    await waitFor(w, () => v1item.textContent.includes('متن نسخهٔ یک'), 10000, 'v1 preview text')
+    check('phase 9: preview shows the snapshot text (متن نسخهٔ یک)',
+      v1item.textContent.includes('متن نسخهٔ یک'))
+
+    // Edit the doc, wait for autosave, then save a version → v3.
+    const editToggle = await waitFor(w, () => w.document.querySelector('button[data-mode="edit"]'), 10000, 'edit toggle')
+    if (editToggle.getAttribute('aria-pressed') !== 'true') editToggle.click()
+    const ta = await waitFor(w, () => w.document.querySelector('textarea[placeholder="اینجا بنویسید…"]'), 10000, 'doc textarea')
+    setInput(w, ta, 'متن تازهٔ ویرایش')
+    await sleep(3500) // autosave debounce is 2 s
+    const saveBtn = [...w.document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'ذخیرهٔ نسخه')
+    saveBtn.click()
+    await waitFor(w, () => db.versions.length === 3, 10000, 'v3 in db')
+    await waitFor(w, () => versionItems().length === 3, 10000, 'v3 listed')
+    check('phase 9: saving a version from an edit creates v3 and lists it',
+      db.versions.length === 3 && versionItems()[0].textContent.includes('نسخهٔ ۳'))
+    check('phase 9: v3 snapshot holds the edited text', (() => {
+      const v3 = db.versions.find((v) => v.version_no === 3)
+      const d = new Y.Doc()
+      applyDocState(d, v3.snapshot_ref, 'version')
+      return d.getText('content').toString() === 'متن تازهٔ ویرایش'
+    })())
+
+    // Restore v1 → live text goes back, and a NEW version (v4) is
+    // recorded with the restore note; nothing is deleted.
+    const v1item2 = versionItems().find((li) => li.textContent.includes('نسخهٔ ۱'))
+    const restoreBtn = [...v1item2.querySelectorAll('button')].find((b) => b.textContent.includes('برگرداندن'))
+    restoreBtn.click()
+    await waitFor(w, () => db.versions.length === 4, 10000, 'v4 (restore) in db')
+    await waitFor(w, () => w.document.querySelector('textarea[placeholder="اینجا بنویسید…"]')?.value === 'متن نسخهٔ یک', 10000, 'textarea back to v1 text')
+    check('phase 9: restore puts the v1 text back in the live doc',
+      w.document.querySelector('textarea[placeholder="اینجا بنویسید…"]')?.value === 'متن نسخهٔ یک')
+    check('phase 9: restore records a new version (v4) with the restore note',
+      db.versions.find((v) => v.version_no === 4)?.note === 'برگردانده‌شده از نسخهٔ ۱')
+    check('phase 9: restore deletes nothing (4 versions in db)',
+      db.versions.length === 4)
+
+    const realErrors = m.errors.filter((e) => !/websocket|realtime/i.test(e))
+    check('phase 9: 0 non-Realtime JS errors on the mount', realErrors.length === 0, JSON.stringify(realErrors.slice(0, 3)))
     m.dom.window.close()
   }
 

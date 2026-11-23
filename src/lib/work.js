@@ -8,6 +8,7 @@ import { BUILTIN_TEMPLATES } from './templates.js'
 import {
   buildSearchSnippet,
   escapeSearchPattern,
+  faNum,
   nextTaskStatus,
   nextVersionNo,
   validateTaskParent
@@ -567,10 +568,14 @@ export async function saveVersion(docRow, ydoc, note) {
     .select()
     .single()
   if (error) throw error
-  await sb
+  // The version row is already saved above; a failed docs.version bump
+  // must not fail the save — but it must not fail SILENTLY either
+  // (a stale docs.version hides the newest version number).
+  const { error: verErr } = await sb
     .from('docs')
     .update({ version: no, updated_at: new Date().toISOString() })
     .eq('id', docRow.id)
+  if (verErr) console.warn('saveVersion: docs.version bump failed:', verErr.message || verErr)
   return data
 }
 
@@ -596,6 +601,6 @@ export async function restoreVersion(docRow, ydoc, versionRow, saveNow) {
     if (snapshotText) ytext.insert(0, snapshotText)
   }, 'version')
   if (saveNow) await saveNow()
-  const fresh = await saveVersion(docRow, ydoc, 'برگردانده‌شده از نسخهٔ ' + versionRow.version_no)
+  const fresh = await saveVersion(docRow, ydoc, 'برگردانده‌شده از نسخهٔ ' + faNum(versionRow.version_no))
   return fresh
 }

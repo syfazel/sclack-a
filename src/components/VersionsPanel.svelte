@@ -1,5 +1,6 @@
 <script>
   import { memberName } from '../lib/data.js'
+  import { faNum } from '../lib/extract.js'
   import { listVersions, saveVersion, restoreVersion, textFromStateB64 } from '../lib/work.js'
 
   // Version list for one doc (restore points). Versions are immutable:
@@ -52,7 +53,7 @@
 
   async function doRestore(v) {
     if (busy) return
-    if (!confirm('سند به نسخهٔ ' + v.version_no + ' برگردد؟ (یک نسخهٔ تازه ساخته می‌شود.)')) return
+    if (!confirm('سند به نسخهٔ ' + faNum(v.version_no) + ' برگردد؟ (یک نسخهٔ تازه ساخته می‌شود.)')) return
     busy = true
     error = ''
     try {
@@ -105,7 +106,7 @@
         <li class="card bg-base-200">
           <div class="card-body gap-1 py-3">
             <div class="flex items-center gap-2">
-              <span class="font-bold">نسخهٔ {v.version_no}</span>
+              <span class="font-bold">نسخهٔ {faNum(v.version_no)}</span>
               <span class="text-xs opacity-60">
                 {memberName(v.author_id)} · {fmt(v.created_at)}
               </span>
